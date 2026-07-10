@@ -32,6 +32,7 @@ CodexPlus v0.1 focuses on read-only local history and official session resume:
 - Fall back to scanning `~/.codex/sessions/**/*.jsonl`.
 - Render clean transcripts without system, developer, and tool noise by default.
 - Search across clean user and assistant messages.
+- Pick search matches through an optional fzf preview and resume flow.
 - List files mentioned in clean session history and optionally jump to one in `$EDITOR`.
 - Use `fzf` as an optional interactive browser.
 - Resume selected sessions through the official `codex resume` command.
@@ -82,6 +83,12 @@ Search clean transcript text:
 
 ```bash
 cxp search "kibana"
+```
+
+Pick a matching session from a keyboard-driven search surface:
+
+```bash
+cxp search "kibana" --open
 ```
 
 Show only Codex messages from the latest session:

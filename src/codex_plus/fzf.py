@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 from .file_nav import FileHit
-from .models import ThreadRow
+from .models import SearchMatch, ThreadRow
 from .transcript import format_ms, short_id, truncate
 
 
@@ -74,6 +74,35 @@ def choose_file(hits: list[FileHit]) -> FileHit | None:
     return next((hit for hit in hits if hit.resolved_path == selected_path), None)
 
 
+def choose_search_match(matches: list[SearchMatch], *, mode: str = "chat") -> str | None:
+    rows = [row_for_search_match(match) for match in matches]
+    selected = subprocess.run(
+        [
+            "fzf",
+            "--ansi",
+            "--delimiter",
+            "\t",
+            "--with-nth",
+            "2..",
+            "--no-sort",
+            "--prompt",
+            "cxp search> ",
+            "--header",
+            "enter resumes selected session, preview is clean history, use / to refine, esc cancels",
+            "--preview",
+            preview_command(mode),
+            "--preview-window",
+            "right,65%,wrap",
+        ],
+        input="\n".join(rows),
+        text=True,
+        capture_output=True,
+    )
+    if selected.returncode != 0 or not selected.stdout.strip():
+        return None
+    return selected.stdout.split("\t", 1)[0].strip()
+
+
 def preview_command(mode: str) -> str:
     executable = shlex.quote(sys.executable)
     return f"{executable} -m codex_plus preview {{1}} --mode {shlex.quote(mode)}"
@@ -110,5 +139,21 @@ def row_for_file(hit: FileHit) -> str:
             f"{hit.count:>3}",
             status,
             truncate(hit.context, 140),
+        ]
+    )
+
+
+def row_for_search_match(match: SearchMatch) -> str:
+    thread = match.thread
+    title = truncate(thread.title or thread.first_user_message or thread.preview, 88)
+    return "\t".join(
+        [
+            thread.id,
+            format_ms(thread.recency_at_ms),
+            f"{match.role:9}",
+            short_id(thread.id),
+            title,
+            truncate(match.snippet, 140),
+            thread.cwd or "?",
         ]
     )

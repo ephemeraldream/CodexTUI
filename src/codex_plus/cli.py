@@ -12,7 +12,8 @@ from pathlib import Path
 
 from . import __version__
 from .file_nav import FileHit, file_hits_for_thread, render_file_hits
-from .fzf import choose_file, choose_thread, is_available
+from .fzf import choose_file, choose_search_match, choose_thread, is_available
+from .models import SearchMatch
 from .paths import real_codex_bin
 from .store import CodexStore
 from .transcript import filter_messages, format_ms, one_line, read_messages, render_thread, short_id, truncate
@@ -111,6 +112,7 @@ def build_parser() -> argparse.ArgumentParser:
     search_p.add_argument("text")
     search_p.add_argument("--mode", choices=["chat", "assistant", "final", "user"], default="chat")
     search_p.add_argument("--metadata-only", action="store_true", help="search only titles, previews, and cwd")
+    search_p.add_argument("--open", action="store_true", help="pick a matching session with fzf and resume it")
     search_p.add_argument("-a", "--all", action="store_true", help="include archived sessions")
     search_p.add_argument("-n", "--limit", type=int, default=40, help="maximum matches to print")
     search_p.add_argument("--source", choices=["cli", "vscode", "exec"], help="filter by source")
@@ -266,30 +268,41 @@ def files_thread(args: argparse.Namespace) -> int:
 def search_threads(args: argparse.Namespace) -> int:
     needle = args.text
     threads = CodexStore().load_threads(include_archived=args.all, limit=None, source=args.source, cwd=args.cwd)
-    matches: list[tuple[str, str, str, str]] = []
+    matches: list[SearchMatch] = []
     needle_fold = needle.casefold()
     for thread in threads:
         metadata = " ".join([thread.title, thread.preview, thread.first_user_message, thread.cwd])
-        thread_matches: list[tuple[str, str, str, str]] = []
+        thread_matches: list[SearchMatch] = []
         if not args.metadata_only:
             messages = filter_messages(read_messages(Path(thread.rollout_path)), args.mode)
             for message in messages:
                 if needle_fold in message.text.casefold():
-                    thread_matches.append((thread.id, thread.title, message.role, snippet(message.text, needle)))
+                    thread_matches.append(SearchMatch(thread, message.role, snippet(message.text, needle)))
         if args.metadata_only or not thread_matches:
             if needle_fold in metadata.casefold():
-                thread_matches.insert(0, (thread.id, thread.title, "meta", snippet(metadata, needle)))
+                thread_matches.insert(0, SearchMatch(thread, "meta", snippet(metadata, needle)))
         matches.extend(thread_matches)
         if args.limit and len(matches) >= args.limit:
             break
     if not matches:
         print("No matches.")
         return 1
-    for session_id, title, role, text in matches[: args.limit or None]:
-        print(f"{short_id(session_id)}  {role:9}  {truncate(title, 64)}")
-        print(f"  {text}")
-        print(f"  cxp view {session_id} --mode {args.mode}")
+    if args.open and is_available():
+        session_id = choose_search_match(matches[: args.limit or None], mode=args.mode)
+        if not session_id:
+            return 0
+        return exec_resume(session_id)
+    print_search_matches(matches, limit=args.limit, mode=args.mode)
     return 0
+
+
+def print_search_matches(matches: list[SearchMatch], *, limit: int | None, mode: str) -> None:
+    for match in matches[: limit or None]:
+        thread = match.thread
+        title = thread.title or thread.first_user_message or thread.preview
+        print(f"{short_id(thread.id)}  {match.role:9}  {truncate(title, 64)}")
+        print(f"  {match.snippet}")
+        print(f"  cxp view {thread.id} --mode {mode}")
 
 
 def resume_thread(args: argparse.Namespace) -> int:
