@@ -89,7 +89,7 @@ Open the CodexPlus terminal UI:
 cxp tui
 ```
 
-Inside the TUI, select a session with the arrow keys, switch preview modes with `v`, `a`, `f`, and `u`, and press Enter to type a follow-up prompt.
+Inside the TUI, press Tab to switch focus between the session list and preview pane, use arrows or PageUp/PageDown to move or scroll the focused pane, switch preview modes with `v`, `a`, `f`, and `u`, and press Enter to type a follow-up prompt.
 The follow-up is run through `codex exec resume --json`, so CodexPlus streams the assistant text instead of opening Codex's interactive TUI.
 
 List recent sessions:

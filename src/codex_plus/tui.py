@@ -22,6 +22,8 @@ class TuiApp:
     mode: str = "chat"
     selected: int = 0
     top: int = 0
+    focus: str = "sessions"
+    preview_top: int = 0
     status: str = "Enter asks CodexPlus to continue the selected session through JSON streaming."
     preview_cache: dict[tuple[str, str], list[str]] = field(default_factory=dict)
 
@@ -39,14 +41,16 @@ class TuiApp:
             key = stdscr.getch()
             if key in (ord("q"), 27):
                 return 0
-            if key in (curses.KEY_UP, ord("k")):
-                self.move_selection(-1)
+            if key in (9,):
+                self.toggle_focus()
+            elif key in (curses.KEY_UP, ord("k")):
+                self.move_focused(-1)
             elif key in (curses.KEY_DOWN, ord("j")):
-                self.move_selection(1)
+                self.move_focused(1)
             elif key in (curses.KEY_NPAGE,):
-                self.move_selection(10)
+                self.move_focused(10)
             elif key in (curses.KEY_PPAGE,):
-                self.move_selection(-10)
+                self.move_focused(-10)
             elif key in (ord("v"),):
                 self.set_mode("chat")
             elif key in (ord("f"),):
@@ -64,11 +68,29 @@ class TuiApp:
     def move_selection(self, delta: int) -> None:
         if not self.threads:
             return
-        self.selected = max(0, min(len(self.threads) - 1, self.selected + delta))
+        previous = self.selected
+        self.selected = clamp(self.selected + delta, 0, len(self.threads) - 1)
+        if self.selected != previous:
+            self.preview_top = 0
         self.status = f"Selected {short_id(self.selected_thread().id)}."
+
+    def move_focused(self, delta: int) -> None:
+        if self.focus == "preview":
+            self.scroll_preview(delta)
+            return
+        self.move_selection(delta)
+
+    def scroll_preview(self, delta: int) -> None:
+        self.preview_top = max(0, self.preview_top + delta)
+        self.status = f"Preview scroll: line {self.preview_top + 1}."
+
+    def toggle_focus(self) -> None:
+        self.focus = "preview" if self.focus == "sessions" else "sessions"
+        self.status = f"Focus: {self.focus}."
 
     def set_mode(self, mode: str) -> None:
         self.mode = mode
+        self.preview_top = 0
         self.status = f"Preview mode: {mode}."
 
     def draw(self) -> None:
@@ -88,15 +110,17 @@ class TuiApp:
         body_height = height - 4
         self.keep_selected_visible(body_height - 2)
 
-        add_text(stdscr, 1, 0, "Sessions", list_width, curses.A_BOLD)
-        add_text(stdscr, 1, preview_x, f"Preview: {self.mode}", preview_width, curses.A_BOLD)
+        sessions_attr = curses.A_REVERSE if self.focus == "sessions" else curses.A_BOLD
+        preview_attr = curses.A_REVERSE if self.focus == "preview" else curses.A_BOLD
+        add_text(stdscr, 1, 0, "Sessions", list_width, sessions_attr)
+        add_text(stdscr, 1, preview_x, f"Preview: {self.mode}", preview_width, preview_attr)
         for y in range(1, height - 2):
             add_text(stdscr, y, list_width, "|", 1)
 
         self.draw_sessions(list_width, body_height)
         self.draw_preview(preview_x, 2, preview_width, body_height - 1)
 
-        help_text = "up/down select | enter ask+stream | v chat | a assistant | f final | u user | q quit"
+        help_text = "tab focus | arrows move/scroll | enter ask+stream | v chat | a assistant | f final | u user | q quit"
         add_text(stdscr, height - 2, 0, help_text, width, curses.A_REVERSE)
         add_text(stdscr, height - 1, 0, self.status, width)
         stdscr.refresh()
@@ -120,9 +144,11 @@ class TuiApp:
             add_text(self.stdscr, row, 0, line, width, attr)
 
     def draw_preview(self, x: int, y: int, width: int, height: int) -> None:
-        lines = self.preview_lines(self.selected_thread())
+        wrapped = wrap_lines(self.preview_lines(self.selected_thread()), width)
+        self.preview_top = clamped_scroll_top(len(wrapped), height, self.preview_top)
+        lines = wrapped[self.preview_top : self.preview_top + max(0, height)]
         row = y
-        for line in wrap_lines(lines, width):
+        for line in lines:
             if row >= y + height:
                 break
             add_text(self.stdscr, row, x, line, width)
@@ -249,3 +275,20 @@ def wrap_lines(lines: list[str], width: int) -> list[str]:
         )
         result.extend(wrapped or [""])
     return result
+
+
+def visible_lines(lines: list[str], width: int, height: int, top: int) -> list[str]:
+    if height <= 0:
+        return []
+    wrapped = wrap_lines(lines, width)
+    start = clamped_scroll_top(len(wrapped), height, top)
+    return wrapped[start : start + height]
+
+
+def clamped_scroll_top(total_lines: int, height: int, requested: int) -> int:
+    max_top = max(0, total_lines - max(1, height))
+    return clamp(requested, 0, max_top)
+
+
+def clamp(value: int, minimum: int, maximum: int) -> int:
+    return max(minimum, min(maximum, value))

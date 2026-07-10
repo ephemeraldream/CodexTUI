@@ -7,7 +7,7 @@ from unittest.mock import patch
 import path_bootstrap  # noqa: F401
 
 from codex_plus.models import ThreadRow
-from codex_plus.tui import stream_selected_thread, wrap_lines
+from codex_plus.tui import TuiApp, stream_selected_thread, visible_lines, wrap_lines
 
 
 class TuiTests(unittest.TestCase):
@@ -37,10 +37,42 @@ class TuiTests(unittest.TestCase):
 
         self.assertEqual(lines, ["abcd", "efgh", "ij"])
 
+    def test_preview_visible_lines_scroll_and_clamp(self) -> None:
+        lines = ["one", "two", "three", "four"]
 
-def sample_thread() -> ThreadRow:
+        self.assertEqual(visible_lines(lines, width=20, height=2, top=1), ["two", "three"])
+        self.assertEqual(visible_lines(lines, width=20, height=2, top=99), ["three", "four"])
+
+    def test_focus_toggle_moves_arrows_between_sessions_and_preview(self) -> None:
+        app = TuiApp([sample_thread("019f-test-one"), sample_thread("019f-test-two")], lambda _thread, _prompt: 0)
+
+        app.move_focused(1)
+        self.assertEqual(app.selected, 1)
+        self.assertEqual(app.preview_top, 0)
+
+        app.toggle_focus()
+        app.move_focused(3)
+        self.assertEqual(app.selected, 1)
+        self.assertEqual(app.preview_top, 3)
+
+    def test_selection_and_mode_changes_reset_preview_scroll(self) -> None:
+        app = TuiApp(
+            [sample_thread("019f-test-one"), sample_thread("019f-test-two")],
+            lambda _thread, _prompt: 0,
+            preview_top=8,
+        )
+
+        app.move_selection(1)
+        self.assertEqual(app.preview_top, 0)
+
+        app.preview_top = 4
+        app.set_mode("final")
+        self.assertEqual(app.preview_top, 0)
+
+
+def sample_thread(thread_id: str = "019f-test-tui") -> ThreadRow:
     return ThreadRow(
-        id="019f-test-tui",
+        id=thread_id,
         title="Build a TUI",
         cwd="/tmp/project",
         source="cli",
