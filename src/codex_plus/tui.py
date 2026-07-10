@@ -33,6 +33,7 @@ class TuiApp:
     status: str = "Enter asks CodexPlus to continue the selected session through JSON streaming."
     preview_cache: dict[tuple[str, str], list[str]] = field(default_factory=dict)
     stream_lines: list[str] = field(default_factory=list)
+    stream_top: int | None = None
 
     def run(self, stdscr: object) -> int:
         import curses
@@ -173,6 +174,7 @@ class TuiApp:
             self.status = "Ask cancelled."
             return
         thread = self.selected_thread()
+        self.stream_top = None
         self.stream_lines = [
             f"CodexPlus streaming {short_id(thread.id)} via codex exec resume --json",
             "",
@@ -184,9 +186,9 @@ class TuiApp:
         writer.close_line()
         self.preview_cache.clear()
         self.status = "Stream finished." if code == 0 else f"Stream exited with status {code}."
-        self.stream_lines.extend(["", f"{self.status} Press any key to return."])
+        self.stream_lines.extend(["", f"{self.status} Arrows/PageUp/PageDown scroll, Enter/q returns."])
         self.draw_stream()
-        self.stdscr.getch()
+        self.review_stream()
         self.stdscr.clear()
 
     def append_stream_line(self, line: str) -> None:
@@ -203,17 +205,60 @@ class TuiApp:
             return
 
         add_text(stdscr, 0, 0, " CodexPlus Stream ", width, curses.A_REVERSE)
+        body_height = height - 3
+        for row, line in enumerate(self.visible_stream_lines(current_line, width, body_height), start=1):
+            add_text(stdscr, row, 0, line, width)
+        add_text(
+            stdscr,
+            height - 2,
+            0,
+            "codex exec resume --json | output captured by CodexPlus | scroll after finish",
+            width,
+            curses.A_REVERSE,
+        )
+        add_text(stdscr, height - 1, 0, self.status, width)
+        stdscr.refresh()
+
+    def visible_stream_lines(self, current_line: str | None, width: int, height: int) -> list[str]:
+        if height <= 0:
+            return []
         lines = list(self.stream_lines)
         if current_line is not None:
             lines.append(current_line)
-        body_height = height - 3
         wrapped = wrap_lines(lines, width)
-        start = clamped_scroll_top(len(wrapped), body_height, len(wrapped))
-        for row, line in enumerate(wrapped[start : start + body_height], start=1):
-            add_text(stdscr, row, 0, line, width)
-        add_text(stdscr, height - 2, 0, "codex exec resume --json | output captured by CodexPlus", width, curses.A_REVERSE)
-        add_text(stdscr, height - 1, 0, self.status, width)
-        stdscr.refresh()
+        start = self.stream_start(len(wrapped), height)
+        return wrapped[start : start + height]
+
+    def stream_start(self, total_lines: int, height: int) -> int:
+        requested = total_lines if self.stream_top is None else self.stream_top
+        return clamped_scroll_top(total_lines, height, requested)
+
+    def scroll_stream_view(self, delta: int, width: int, height: int) -> None:
+        wrapped = wrap_lines(self.stream_lines, width)
+        current = self.stream_start(len(wrapped), height)
+        self.stream_top = clamped_scroll_top(len(wrapped), height, current + delta)
+        self.status = f"Stream scroll: line {self.stream_top + 1}."
+
+    def scroll_stream(self, delta: int) -> None:
+        height, width = self.stdscr.getmaxyx()
+        self.scroll_stream_view(delta, width, max(1, height - 3))
+        self.draw_stream()
+
+    def review_stream(self) -> None:
+        curses = self.curses
+        while True:
+            key = self.stdscr.getch()
+            if key in (ord("q"), 27, 10, 13, curses.KEY_ENTER):
+                self.stream_top = None
+                return
+            if key in (curses.KEY_UP, ord("k")):
+                self.scroll_stream(-1)
+            elif key in (curses.KEY_DOWN, ord("j")):
+                self.scroll_stream(1)
+            elif key in (curses.KEY_PPAGE,):
+                self.scroll_stream(-10)
+            elif key in (curses.KEY_NPAGE,):
+                self.scroll_stream(10)
 
     def read_prompt(self, label: str) -> str:
         curses = self.curses

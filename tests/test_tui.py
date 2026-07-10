@@ -82,6 +82,26 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(visible_lines(lines, width=20, height=2, top=1), ["two", "three"])
         self.assertEqual(visible_lines(lines, width=20, height=2, top=99), ["three", "four"])
 
+    def test_stream_view_auto_follows_until_user_scrolls(self) -> None:
+        app = TuiApp([sample_thread()], lambda _thread, _prompt, _stdout: 0)
+        app.stream_lines = ["one", "two", "three", "four"]
+
+        self.assertEqual(app.visible_stream_lines(None, width=20, height=2), ["three", "four"])
+
+        app.stream_top = 1
+        self.assertEqual(app.visible_stream_lines(None, width=20, height=2), ["two", "three"])
+
+    def test_stream_scrollback_clamps_to_available_output(self) -> None:
+        app = TuiApp([sample_thread()], lambda _thread, _prompt, _stdout: 0)
+        app.stream_lines = ["one", "two", "three", "four", "five"]
+
+        app.scroll_stream_view(-2, width=20, height=2)
+        self.assertEqual(app.stream_top, 1)
+        self.assertEqual(app.status, "Stream scroll: line 2.")
+
+        app.scroll_stream_view(99, width=20, height=2)
+        self.assertEqual(app.stream_top, 3)
+
     def test_focus_toggle_moves_arrows_between_sessions_and_preview(self) -> None:
         app = TuiApp(
             [sample_thread("019f-test-one"), sample_thread("019f-test-two")],
