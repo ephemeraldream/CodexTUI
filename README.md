@@ -23,6 +23,7 @@ cxp files last
 cxp assistant last
 cxp final 019f4bc1
 cxp resume 019f4bc1
+cxp stream "fix the failing test"
 ```
 
 ## Current scope
@@ -37,6 +38,7 @@ CodexPlus v0.1 focuses on read-only local history and official session resume:
 - Scope single-session commands such as view, final, user, files, and path to the current git workspace with `--here`.
 - Pick sessions and search matches through optional `fzf` previews with keyboard actions for resume, clean view, final answer, user turns, file references, and direct file editing.
 - List files mentioned in clean session history and optionally jump to one in `$EDITOR`.
+- Run Codex through `codex exec --json` and stream clean assistant text from CodexPlus instead of opening Codex's interactive TUI.
 - Resume selected sessions through the official `codex resume` command.
 - Install an optional shell shim for `codex h`, `codex view`, and related helper commands.
 
@@ -145,6 +147,18 @@ Resume a session directly:
 cxp resume 019f4bc1
 ```
 
+Run a new non-interactive Codex turn through a CodexPlus-controlled JSON stream:
+
+```bash
+cxp stream "fix the failing test"
+```
+
+Resume an existing session through the same stream path:
+
+```bash
+cxp stream --resume 019f4bc1 "continue from here"
+```
+
 ## Optional Codex shim
 
 CodexPlus can install an opt-in shim so selected helper commands work from `codex`:
@@ -162,6 +176,7 @@ codex h
 codex search "dividends"
 codex files last
 codex view last
+codex stream "fix the failing test"
 codex "regular prompt still goes to official Codex"
 ```
 

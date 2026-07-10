@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 
 from . import __version__
+from .codex_stream import codex_exec_command, run_codex_json_stream
 from .file_nav import FileHit, file_hits_for_thread, render_file_hits
 from .fzf import PickerSelection, choose_file, choose_search_match, choose_thread, is_available
 from .models import SearchMatch
@@ -49,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"CodexPlus {__version__}")
     sub = parser.add_subparsers(
         dest="command",
-        metavar="{browse,list,view,files,assistant,final,user,search,resume,path,stats,install-shim,compress}",
+        metavar="{browse,list,view,files,assistant,final,user,search,resume,stream,path,stats,install-shim,compress}",
     )
 
     def add_hidden_parser(name: str) -> argparse.ArgumentParser:
@@ -141,6 +142,13 @@ def build_parser() -> argparse.ArgumentParser:
     resume_cwd_group.add_argument("--cwd")
     resume_cwd_group.add_argument("--here", action="store_true", help="filter to the current git workspace or cwd")
     resume_p.set_defaults(func=resume_thread)
+
+    stream_p = sub.add_parser("stream", aliases=["ask"], help="run Codex exec through a CodexPlus JSON stream")
+    stream_p.add_argument("--resume", metavar="SELECTOR", help="resume a session through codex exec resume")
+    add_cwd_scope(stream_p)
+    stream_p.add_argument("--raw-json", action="store_true", help="print raw Codex JSONL events")
+    stream_p.add_argument("prompt", nargs=argparse.REMAINDER, help="prompt words, or omit to read piped stdin")
+    stream_p.set_defaults(func=stream_codex)
 
     path_p = sub.add_parser("path", help="print the rollout JSONL path for a session")
     path_p.add_argument("selector", nargs="?", default="last")
@@ -389,6 +397,27 @@ def resume_thread(args: argparse.Namespace) -> int:
     return exec_resume(selection.value)
 
 
+def stream_codex(args: argparse.Namespace) -> int:
+    prompt = joined_prompt(args.prompt)
+    if (not prompt or prompt == "-") and sys.stdin.isatty():
+        print("cxp stream needs a prompt or piped stdin.", file=sys.stderr)
+        return 2
+    resume_id = None
+    if args.resume:
+        resume_id = CodexStore().resolve_thread(args.resume, cwd=cwd_filter(args)).id
+        if prompt is None:
+            prompt = "-"
+    command = codex_exec_command(real_codex_bin(), prompt=prompt, resume_id=resume_id)
+    return run_codex_json_stream(command, raw_json=args.raw_json)
+
+
+def joined_prompt(parts: list[str]) -> str | None:
+    if parts and parts[0] == "--":
+        parts = parts[1:]
+    prompt = " ".join(parts).strip()
+    return prompt or None
+
+
 def handle_session_selection(selection: PickerSelection, *, mode: str) -> int:
     if selection.action == "resume":
         return exec_resume(selection.value)
@@ -497,7 +526,7 @@ case "${{1:-}}" in
     shift
     exec cxp list "$@"
     ;;
-  view|show|assistant|answers|final|user|questions|search|grep|files|stats|path)
+  view|show|assistant|answers|final|user|questions|search|grep|files|stream|ask|stats|path)
     exec cxp "$@"
     ;;
 esac

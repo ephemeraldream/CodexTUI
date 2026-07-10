@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import path_bootstrap  # noqa: F401
 
-from codex_plus.cli import handle_session_selection
+from codex_plus.cli import handle_session_selection, main
 from codex_plus.fzf import PickerSelection
 
 
@@ -316,6 +316,46 @@ class CliTests(unittest.TestCase):
         self.assertEqual(files_result.returncode, 0)
         self.assertIn("src/app.py", files_result.stdout)
         self.assertNotIn("src/other.py", files_result.stdout)
+
+    @patch("codex_plus.cli.run_codex_json_stream")
+    def test_stream_command_runs_codex_exec_json_through_codexplus(self, stream_mock) -> None:
+        stream_mock.return_value = 0
+        with patch.dict(os.environ, {"CODEX_REAL_BIN": "/tmp/codex"}):
+            result = main(["stream", "--raw-json", "Fix", "the", "bug"])
+
+        self.assertEqual(result, 0)
+        stream_mock.assert_called_once_with(["/tmp/codex", "exec", "--json", "Fix the bug"], raw_json=True)
+
+    @patch("codex_plus.cli.run_codex_json_stream")
+    def test_stream_resume_resolves_selector_without_opening_interactive_codex(self, stream_mock) -> None:
+        stream_mock.return_value = 0
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            write_cli_session(home, "019f-test-stream", cwd="/tmp/project", user_message="Stream this session")
+            with patch.dict(os.environ, {"CODEX_HOME": str(home), "CODEX_REAL_BIN": "/tmp/codex"}):
+                result = main(["stream", "--resume", "last", "Continue"])
+
+        self.assertEqual(result, 0)
+        stream_mock.assert_called_once_with(
+            ["/tmp/codex", "exec", "resume", "--json", "019f-test-stream", "Continue"],
+            raw_json=False,
+        )
+
+    @patch("codex_plus.cli.run_codex_json_stream")
+    def test_stream_resume_uses_stdin_marker_when_prompt_is_piped(self, stream_mock) -> None:
+        stream_mock.return_value = 0
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            write_cli_session(home, "019f-test-piped", cwd="/tmp/project", user_message="Stream this session")
+            with patch.dict(os.environ, {"CODEX_HOME": str(home), "CODEX_REAL_BIN": "/tmp/codex"}):
+                with patch("codex_plus.cli.sys.stdin.isatty", return_value=False):
+                    result = main(["stream", "--resume", "last"])
+
+        self.assertEqual(result, 0)
+        stream_mock.assert_called_once_with(
+            ["/tmp/codex", "exec", "resume", "--json", "019f-test-piped", "-"],
+            raw_json=False,
+        )
 
     @patch("codex_plus.cli.view_thread")
     def test_picker_view_action_renders_clean_transcript_instead_of_resuming(self, view_mock) -> None:
