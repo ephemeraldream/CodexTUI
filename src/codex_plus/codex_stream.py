@@ -58,6 +58,8 @@ def text_from_json_line(
         return None
     record_type = record.get("type")
     payload_type = payload.get("type")
+    if record_type == "compacted":
+        return render_compacted_record(payload)
     if record_type == "event_msg":
         event_text = text_from_event_payload(payload, call_labels=call_labels)
         if event_text:
@@ -256,6 +258,13 @@ def render_thread_rollback(payload: dict[str, object]) -> str:
         return "[thread] rolled back."
     label = "turn" if count == 1 else "turns"
     return f"[thread] rolled back {count} {label}."
+
+
+def render_compacted_record(payload: dict[str, object]) -> str:
+    message = compact_value(payload.get("message"))
+    if message:
+        return f"[context] compacted: {message}"
+    return "[context] compacted"
 
 
 def render_token_count(payload: dict[str, object]) -> str:

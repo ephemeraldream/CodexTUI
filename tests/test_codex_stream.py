@@ -118,6 +118,36 @@ class CodexStreamTests(unittest.TestCase):
         )
         self.assertEqual(renderer.render_line(rollback_line), "[thread] rolled back 1 turn.")
 
+    def test_renderer_streams_top_level_compaction_once(self) -> None:
+        compacted_line = json.dumps(
+            {
+                "type": "compacted",
+                "payload": {
+                    "message": "",
+                    "replacement_history": [],
+                    "window_number": 2,
+                },
+            }
+        )
+        event_line = json_line("event_msg", {"type": "context_compacted"})
+        renderer = CodexStreamRenderer()
+
+        self.assertEqual(renderer.render_line(compacted_line), "[context] compacted")
+        self.assertIsNone(renderer.render_line(event_line))
+
+    def test_top_level_compaction_message_is_streamed(self) -> None:
+        line = json.dumps(
+            {
+                "type": "compacted",
+                "payload": {
+                    "message": "older turns summarized",
+                    "replacement_history": [],
+                },
+            }
+        )
+
+        self.assertEqual(text_from_json_line(line), "[context] compacted: older turns summarized")
+
     def test_renderer_streams_token_count_status(self) -> None:
         line = json_line(
             "event_msg",
