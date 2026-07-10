@@ -109,6 +109,42 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("No matches.", result.stdout)
 
+    def test_search_ignores_autonomous_wrapper_boilerplate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            write_cli_session(
+                home,
+                "019f-test-autonomous",
+                cwd="/tmp/project",
+                user_message=autonomous_prompt("Ship a keyboard-only CLI wrapper."),
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            boilerplate_result = subprocess.run(
+                [sys.executable, "-m", "codex_plus", "search", "This is iteration"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            objective_result = subprocess.run(
+                [sys.executable, "-m", "codex_plus", "search", "keyboard-only"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(boilerplate_result.returncode, 1)
+        self.assertIn("No matches.", boilerplate_result.stdout)
+        self.assertEqual(objective_result.returncode, 0)
+        self.assertIn("Ship a keyboard-only CLI wrapper.", objective_result.stdout)
+        self.assertNotIn("This is iteration", objective_result.stdout)
+
     def test_clean_cli_commands_hide_event_bootstrap_context(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
@@ -230,6 +266,19 @@ def write_cli_session(home: Path, session_id: str, *, cwd: str, user_message: st
     ]
     path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
     return path
+
+
+def autonomous_prompt(objective: str) -> str:
+    return (
+        "You are working autonomously towards an objective given below.\n"
+        "This is iteration 7. Each iteration aims to make an incremental step forward.\n\n"
+        "## Instructions\n\n"
+        "1. Read notes first.\n\n"
+        "## Output\n\n"
+        "- success\n\n"
+        "## Objective\n\n"
+        f"{objective}"
+    )
 
 
 if __name__ == "__main__":

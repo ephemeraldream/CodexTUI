@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -75,6 +76,59 @@ class StoreTests(unittest.TestCase):
         self.assertEqual([thread.id for thread in threads], ["019f-test-project"])
         self.assertEqual([thread.id for thread in archived_threads], ["019f-test-archived"])
 
+    def test_sqlite_metadata_cleans_autonomous_wrapper_before_query_filtering(self) -> None:
+        prompt = autonomous_prompt("Ship a keyboard-only CLI wrapper.")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            db_path = home / "state_5.sqlite"
+            con = sqlite3.connect(db_path)
+            try:
+                con.execute(
+                    """
+                    CREATE TABLE threads (
+                        id TEXT,
+                        title TEXT,
+                        cwd TEXT,
+                        source TEXT,
+                        archived INTEGER,
+                        rollout_path TEXT,
+                        created_at_ms INTEGER,
+                        updated_at_ms INTEGER,
+                        recency_at_ms INTEGER,
+                        preview TEXT,
+                        first_user_message TEXT
+                    )
+                    """
+                )
+                con.execute(
+                    """
+                    INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "019f-test-autonomous",
+                        prompt,
+                        "/tmp/project",
+                        "cli",
+                        0,
+                        "/tmp/project/session.jsonl",
+                        1783677600000,
+                        1783677605000,
+                        1783677605000,
+                        prompt,
+                        prompt,
+                    ),
+                )
+                con.commit()
+            finally:
+                con.close()
+
+            objective_matches = CodexStore(home).load_threads(query="keyboard-only")
+            boilerplate_matches = CodexStore(home).load_threads(query="This is iteration")
+
+        self.assertEqual([thread.id for thread in objective_matches], ["019f-test-autonomous"])
+        self.assertEqual(objective_matches[0].title, "Ship a keyboard-only CLI wrapper.")
+        self.assertEqual(boilerplate_matches, [])
+
 
 def write_session(
     home: Path,
@@ -102,6 +156,19 @@ def write_session(
     ]
     path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
     return path
+
+
+def autonomous_prompt(objective: str) -> str:
+    return (
+        "You are working autonomously towards an objective given below.\n"
+        "This is iteration 7. Each iteration aims to make an incremental step forward.\n\n"
+        "## Instructions\n\n"
+        "1. Read notes first.\n\n"
+        "## Output\n\n"
+        "- success\n\n"
+        "## Objective\n\n"
+        f"{objective}"
+    )
 
 
 if __name__ == "__main__":

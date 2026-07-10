@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -40,6 +42,29 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual(messages[0].text, "Show me the final answer")
         self.assertNotIn("hidden bootstrap", "\n".join(message.text for message in messages))
 
+    def test_autonomous_objective_wrapper_collapses_to_objective(self) -> None:
+        prompt = autonomous_prompt("Ship a keyboard-only CLI wrapper.")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-autonomous", "cwd": "/tmp/project", "source": "cli"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "event_msg",
+                    "payload": {"type": "user_message", "message": prompt, "images": []},
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            messages = read_messages(path)
+
+        self.assertEqual([message.role for message in messages], ["user"])
+        self.assertEqual(messages[0].text, "Ship a keyboard-only CLI wrapper.")
+        self.assertNotIn("This is iteration", messages[0].text)
+
     def test_render_thread_includes_header_and_messages(self) -> None:
         thread = ThreadRow(
             id="019f-test-basic",
@@ -59,6 +84,19 @@ class TranscriptTests(unittest.TestCase):
         self.assertIn("I will inspect the failing path.", rendered)
         self.assertIn("The bug is fixed.", rendered)
         self.assertNotIn("Find the bug\n\n[", rendered)
+
+
+def autonomous_prompt(objective: str) -> str:
+    return (
+        "You are working autonomously towards an objective given below.\n"
+        "This is iteration 7. Each iteration aims to make an incremental step forward.\n\n"
+        "## Instructions\n\n"
+        "1. Read notes first.\n\n"
+        "## Output\n\n"
+        "- success\n\n"
+        "## Objective\n\n"
+        f"{objective}"
+    )
 
 
 if __name__ == "__main__":

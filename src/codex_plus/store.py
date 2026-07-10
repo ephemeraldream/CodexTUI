@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .models import ThreadRow
 from .paths import codex_home
-from .transcript import one_line, read_messages
+from .transcript import clean_metadata_text, one_line, read_messages
 
 
 class CodexStore:
@@ -70,10 +70,10 @@ class CodexStore:
             rows = con.execute(sql, params).fetchall()
         finally:
             con.close()
-        return [
+        threads = [
             ThreadRow(
                 id=str(row["id"] or ""),
-                title=str(row["title"] or ""),
+                title=clean_metadata_text(str(row["title"] or "")),
                 cwd=str(row["cwd"] or ""),
                 source=str(row["source"] or ""),
                 archived=bool(row["archived"]),
@@ -81,11 +81,18 @@ class CodexStore:
                 created_at_ms=safe_ms(row["created_at_ms"]),
                 updated_at_ms=safe_ms(row["updated_at_ms"]),
                 recency_at_ms=safe_ms(row["recency_at_ms"]),
-                preview=str(row["preview"] or ""),
-                first_user_message=str(row["first_user_message"] or ""),
+                preview=clean_metadata_text(str(row["preview"] or "")),
+                first_user_message=clean_metadata_text(str(row["first_user_message"] or "")),
             )
             for row in rows
         ]
+        if query:
+            threads = [
+                thread
+                for thread in threads
+                if thread_matches_filters(thread, query=query, source=None, cwd=None)
+            ]
+        return threads
 
     def resolve_thread(self, selector: str | None, *, include_archived: bool = True) -> ThreadRow:
         threads = self.load_threads(include_archived=include_archived, limit=None)
@@ -157,7 +164,7 @@ class CodexStore:
             meta = read_session_meta(path)
             session_id = meta.get("id") or id_from_path(path)
             first = first_user_message(path)
-            title = meta.get("thread_name") or first or path.name
+            title = clean_metadata_text(meta.get("thread_name") or first or path.name)
             mtime_ms = int(path.stat().st_mtime * 1000)
             threads.append(
                 ThreadRow(

@@ -33,7 +33,7 @@ def read_messages(path: Path) -> list[ChatMessage]:
                 if payload_type == "user_message":
                     text = text_from_payload(payload)
                     if text and not looks_like_bootstrap_context(text):
-                        event_messages.append(ChatMessage(timestamp, "user", "", text))
+                        event_messages.append(ChatMessage(timestamp, "user", "", clean_user_text(text)))
                 elif payload_type == "agent_message":
                     text = text_from_payload(payload)
                     if text:
@@ -52,7 +52,7 @@ def read_messages(path: Path) -> list[ChatMessage]:
                 if role == "assistant":
                     fallback_assistant.append(ChatMessage(timestamp, "assistant", phase, text))
                 elif role == "user" and not looks_like_bootstrap_context(text):
-                    fallback_user.append(ChatMessage(timestamp, "user", phase, text))
+                    fallback_user.append(ChatMessage(timestamp, "user", phase, clean_user_text(text)))
     has_event_assistant = any(message.role == "assistant" for message in event_messages)
     has_event_user = any(message.role == "user" for message in event_messages)
     messages: list[ChatMessage] = []
@@ -98,6 +98,25 @@ def text_from_payload(payload: dict[str, object]) -> str:
 def looks_like_bootstrap_context(text: str) -> bool:
     stripped = text.lstrip()
     return stripped.startswith("# AGENTS.md instructions") or "<environment_context>" in stripped
+
+
+def clean_user_text(text: str) -> str:
+    return unwrap_autonomous_objective(text)
+
+
+def clean_metadata_text(text: str) -> str:
+    return unwrap_autonomous_objective(text)
+
+
+def unwrap_autonomous_objective(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("You are working autonomously towards an objective given below."):
+        return text
+    match = re.search(r"(?ms)^## Objective\s*\n+(.*)\Z", stripped)
+    if not match:
+        return text
+    objective = match.group(1).strip()
+    return objective or text
 
 
 def has_similar_message(messages: Iterable[ChatMessage], candidate: ChatMessage) -> bool:
