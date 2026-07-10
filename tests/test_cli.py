@@ -264,6 +264,59 @@ class CliTests(unittest.TestCase):
         self.assertIn("Project session", result.stdout)
         self.assertNotIn("Other session", result.stdout)
 
+    def test_single_session_commands_here_resolve_last_in_current_git_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            home = root / "codex-home"
+            project = root / "project"
+            nested = project / "src"
+            other_project = root / "other"
+            nested.mkdir(parents=True)
+            other_project.mkdir()
+            (project / ".git").mkdir()
+            project_session = write_cli_session(
+                home,
+                "019f-test-project",
+                cwd=str(project),
+                user_message="Project session mentions src/app.py:3",
+            )
+            other_session = write_cli_session(
+                home,
+                "019f-test-other",
+                cwd=str(other_project),
+                user_message="Other session mentions src/other.py:4",
+            )
+            os.utime(other_session, (300, 300))
+            os.utime(project_session, (200, 200))
+
+            repo_root = Path(__file__).resolve().parents[1]
+            env = dict(os.environ)
+            env["PYTHONPATH"] = str(repo_root / "src")
+            env["CODEX_HOME"] = str(home)
+            view_result = subprocess.run(
+                [sys.executable, "-m", "codex_plus", "view", "--here", "--no-pager"],
+                cwd=nested,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            files_result = subprocess.run(
+                [sys.executable, "-m", "codex_plus", "files", "--here"],
+                cwd=nested,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(view_result.returncode, 0)
+        self.assertIn("Project session mentions src/app.py:3", view_result.stdout)
+        self.assertNotIn("Other session mentions src/other.py:4", view_result.stdout)
+        self.assertEqual(files_result.returncode, 0)
+        self.assertIn("src/app.py", files_result.stdout)
+        self.assertNotIn("src/other.py", files_result.stdout)
+
     @patch("codex_plus.cli.view_thread")
     def test_picker_view_action_renders_clean_transcript_instead_of_resuming(self, view_mock) -> None:
         view_mock.return_value = 0

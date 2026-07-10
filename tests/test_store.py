@@ -76,6 +76,33 @@ class StoreTests(unittest.TestCase):
         self.assertEqual([thread.id for thread in threads], ["019f-test-project"])
         self.assertEqual([thread.id for thread in archived_threads], ["019f-test-archived"])
 
+    def test_resolve_thread_honors_cwd_for_last_selector(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            other = write_session(
+                home,
+                "sessions",
+                "019f-test-other",
+                cwd="/tmp/other",
+                source="cli",
+                user_message="Other recent session",
+            )
+            project = write_session(
+                home,
+                "sessions",
+                "019f-test-project",
+                cwd="/tmp/project",
+                source="cli",
+                user_message="Project older session",
+            )
+            os.utime(other, (300, 300))
+            os.utime(project, (200, 200))
+
+            thread = CodexStore(home).resolve_thread("last", cwd="/tmp/project")
+
+        self.assertEqual(thread.id, "019f-test-project")
+        self.assertEqual(thread.first_user_message, "Project older session")
+
     def test_sqlite_metadata_cleans_autonomous_wrapper_before_query_filtering(self) -> None:
         prompt = autonomous_prompt("Ship a keyboard-only CLI wrapper.")
         with tempfile.TemporaryDirectory() as temp_dir:

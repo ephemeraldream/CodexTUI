@@ -62,6 +62,9 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("-n", "--limit", type=int, default=80, help="maximum sessions to load")
         p.add_argument("-q", "--query", help="filter sessions by title, prompt, cwd, or id")
         p.add_argument("--source", choices=["cli", "vscode", "exec"], help="filter by session source")
+        add_cwd_scope(p)
+
+    def add_cwd_scope(p: argparse.ArgumentParser) -> None:
         cwd_group = p.add_mutually_exclusive_group()
         cwd_group.add_argument("--cwd", help="filter by working directory substring")
         cwd_group.add_argument("--here", action="store_true", help="filter to the current git workspace or cwd")
@@ -82,6 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
     view_p.add_argument("--phase", action="append", help="limit assistant phases, such as commentary or final_answer")
     view_p.add_argument("--no-pager", action="store_true", help="print directly instead of opening less")
     view_p.add_argument("--no-color", action="store_true", help="disable ANSI colors")
+    add_cwd_scope(view_p)
     view_p.set_defaults(func=view_thread)
 
     files_p = sub.add_parser("files", aliases=["f"], help="list files mentioned in a session")
@@ -90,24 +94,28 @@ def build_parser() -> argparse.ArgumentParser:
     files_p.add_argument("--json", action="store_true", help="emit JSON lines")
     files_p.add_argument("--open", action="store_true", help="pick a file with fzf when available and open it in EDITOR")
     files_p.add_argument("--editor", help="editor command for --open, defaults to EDITOR or nvim/vim/vi")
+    add_cwd_scope(files_p)
     files_p.set_defaults(func=files_thread)
 
     assistant_p = sub.add_parser("assistant", aliases=["answers"], help="show only Codex messages")
     assistant_p.add_argument("selector", nargs="?", default="last")
     assistant_p.add_argument("--no-pager", action="store_true")
     assistant_p.add_argument("--no-color", action="store_true")
+    add_cwd_scope(assistant_p)
     assistant_p.set_defaults(func=lambda args: view_thread(setattr_return(args, "mode", "assistant")))
 
     final_p = sub.add_parser("final", help="show only the final Codex answer")
     final_p.add_argument("selector", nargs="?", default="last")
     final_p.add_argument("--no-pager", action="store_true")
     final_p.add_argument("--no-color", action="store_true")
+    add_cwd_scope(final_p)
     final_p.set_defaults(func=lambda args: view_thread(setattr_return(args, "mode", "final")))
 
     user_p = sub.add_parser("user", aliases=["questions"], help="show only user turns")
     user_p.add_argument("selector", nargs="?", default="last")
     user_p.add_argument("--no-pager", action="store_true")
     user_p.add_argument("--no-color", action="store_true")
+    add_cwd_scope(user_p)
     user_p.set_defaults(func=lambda args: view_thread(setattr_return(args, "mode", "user")))
 
     search_p = sub.add_parser("search", aliases=["grep"], help="search clean session text")
@@ -136,6 +144,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     path_p = sub.add_parser("path", help="print the rollout JSONL path for a session")
     path_p.add_argument("selector", nargs="?", default="last")
+    add_cwd_scope(path_p)
     path_p.set_defaults(func=show_path)
 
     stats_p = sub.add_parser("stats", help="show session counts")
@@ -245,7 +254,7 @@ def browse_threads(args: argparse.Namespace) -> int:
 
 
 def view_thread(args: argparse.Namespace) -> int:
-    thread = CodexStore().resolve_thread(args.selector, include_archived=True)
+    thread = CodexStore().resolve_thread(args.selector, include_archived=True, cwd=cwd_filter(args))
     phases = set(args.phase) if getattr(args, "phase", None) else None
     color = sys.stdout.isatty() and not args.no_color
     output = render_thread(thread, mode=args.mode, phases=phases, color=color)
@@ -263,7 +272,7 @@ def preview_thread(args: argparse.Namespace) -> int:
 
 
 def files_thread(args: argparse.Namespace) -> int:
-    thread = CodexStore().resolve_thread(args.selector, include_archived=True)
+    thread = CodexStore().resolve_thread(args.selector, include_archived=True, cwd=cwd_filter(args))
     hits = file_hits_for_thread(thread, mode=args.mode)
     if args.json:
         for hit in hits:
@@ -362,7 +371,7 @@ def print_search_matches_json(matches: list[SearchMatch], *, limit: int | None, 
 def resume_thread(args: argparse.Namespace) -> int:
     store = CodexStore()
     if args.selector:
-        thread = store.resolve_thread(args.selector)
+        thread = store.resolve_thread(args.selector, cwd=cwd_filter(args))
         return exec_resume(thread.id)
     threads = store.load_threads(
         include_archived=False,
@@ -417,7 +426,7 @@ def exec_resume(session_id: str) -> int:
 
 
 def show_path(args: argparse.Namespace) -> int:
-    thread = CodexStore().resolve_thread(args.selector)
+    thread = CodexStore().resolve_thread(args.selector, cwd=cwd_filter(args))
     print(thread.rollout_path)
     return 0
 

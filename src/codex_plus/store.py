@@ -94,8 +94,14 @@ class CodexStore:
             ]
         return threads
 
-    def resolve_thread(self, selector: str | None, *, include_archived: bool = True) -> ThreadRow:
-        threads = self.load_threads(include_archived=include_archived, limit=None)
+    def resolve_thread(
+        self,
+        selector: str | None,
+        *,
+        include_archived: bool = True,
+        cwd: str | None = None,
+    ) -> ThreadRow:
+        threads = self.load_threads(include_archived=include_archived, limit=None, cwd=cwd)
         if not threads:
             raise LookupError("No Codex sessions found.")
         if selector in (None, "", "last", "@last"):

@@ -34,6 +34,7 @@ CodexPlus v0.1 focuses on read-only local history and official session resume:
 - Render clean transcripts without system, developer, and tool noise by default.
 - Search across clean user and assistant messages.
 - Scope list, browse, resume, and search commands to the current git workspace with `--here`.
+- Scope single-session commands such as view, final, user, files, and path to the current git workspace with `--here`.
 - Pick sessions and search matches through optional `fzf` previews with keyboard actions for resume, clean view, final answer, user turns, file references, and direct file editing.
 - List files mentioned in clean session history and optionally jump to one in `$EDITOR`.
 - Resume selected sessions through the official `codex resume` command.
@@ -99,6 +100,13 @@ Scope session browsing or search to the current git workspace:
 ```bash
 cxp h --here
 cxp search "kibana" --here
+```
+
+Show the latest clean transcript or file references from the current git workspace:
+
+```bash
+cxp view --here
+cxp files --here
 ```
 
 Pick a matching session from a keyboard-driven search surface:
