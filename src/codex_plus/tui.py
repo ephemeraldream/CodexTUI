@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 import textwrap
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Callable, Protocol, TextIO
 
 from .codex_stream import codex_exec_command, run_codex_json_stream
 from .models import ThreadRow
@@ -12,7 +12,13 @@ from .store import CodexStore
 from .transcript import render_thread, short_id, truncate
 
 
-StreamRunner = Callable[[ThreadRow, str], int]
+class StreamOutput(Protocol):
+    def write(self, text: str) -> int: ...
+
+    def flush(self) -> None: ...
+
+
+StreamRunner = Callable[[ThreadRow, str, StreamOutput], int]
 
 
 @dataclass
@@ -26,6 +32,7 @@ class TuiApp:
     preview_top: int = 0
     status: str = "Enter asks CodexPlus to continue the selected session through JSON streaming."
     preview_cache: dict[tuple[str, str], list[str]] = field(default_factory=dict)
+    stream_lines: list[str] = field(default_factory=list)
 
     def run(self, stdscr: object) -> int:
         import curses
@@ -166,21 +173,47 @@ class TuiApp:
             self.status = "Ask cancelled."
             return
         thread = self.selected_thread()
-        self.stdscr.erase()
-        self.stdscr.refresh()
-        self.curses.endwin()
-        print(f"CodexPlus streaming {short_id(thread.id)} via codex exec resume --json")
-        code = self.stream_runner(thread, prompt)
-        try:
-            input("\nPress Enter to return to CodexPlus TUI...")
-        except EOFError:
-            pass
-        self.curses.cbreak()
-        self.curses.noecho()
-        safe_curs_set(self.curses, 0)
-        self.stdscr.keypad(True)
+        self.stream_lines = [
+            f"CodexPlus streaming {short_id(thread.id)} via codex exec resume --json",
+            "",
+        ]
+        self.status = "Streaming response inside CodexPlus TUI."
+        self.draw_stream()
+        writer = CursesStreamWriter(self)
+        code = self.stream_runner(thread, prompt, writer)
+        writer.close_line()
+        self.preview_cache.clear()
         self.status = "Stream finished." if code == 0 else f"Stream exited with status {code}."
+        self.stream_lines.extend(["", f"{self.status} Press any key to return."])
+        self.draw_stream()
+        self.stdscr.getch()
         self.stdscr.clear()
+
+    def append_stream_line(self, line: str) -> None:
+        self.stream_lines.append(line.rstrip("\n"))
+
+    def draw_stream(self, current_line: str | None = None) -> None:
+        curses = self.curses
+        stdscr = self.stdscr
+        height, width = stdscr.getmaxyx()
+        stdscr.erase()
+        if height < 6 or width < 30:
+            add_text(stdscr, 0, 0, "Streaming in CodexPlus TUI. Please wait.", width)
+            stdscr.refresh()
+            return
+
+        add_text(stdscr, 0, 0, " CodexPlus Stream ", width, curses.A_REVERSE)
+        lines = list(self.stream_lines)
+        if current_line is not None:
+            lines.append(current_line)
+        body_height = height - 3
+        wrapped = wrap_lines(lines, width)
+        start = clamped_scroll_top(len(wrapped), body_height, len(wrapped))
+        for row, line in enumerate(wrapped[start : start + body_height], start=1):
+            add_text(stdscr, row, 0, line, width)
+        add_text(stdscr, height - 2, 0, "codex exec resume --json | output captured by CodexPlus", width, curses.A_REVERSE)
+        add_text(stdscr, height - 1, 0, self.status, width)
+        stdscr.refresh()
 
     def read_prompt(self, label: str) -> str:
         curses = self.curses
@@ -223,8 +256,8 @@ def run_tui(
         print("No sessions found.")
         return 0
 
-    def runner(thread: ThreadRow, prompt: str) -> int:
-        return stream_selected_thread(thread, prompt, raw_json=raw_json)
+    def runner(thread: ThreadRow, prompt: str, stdout: StreamOutput) -> int:
+        return stream_selected_thread(thread, prompt, raw_json=raw_json, stdout=stdout)
 
     return run_curses_app(TuiApp(threads, runner))
 
@@ -236,9 +269,45 @@ def run_curses_app(app: TuiApp) -> int:
     return int(result or 0)
 
 
-def stream_selected_thread(thread: ThreadRow, prompt: str, *, raw_json: bool = False) -> int:
+def stream_selected_thread(
+    thread: ThreadRow,
+    prompt: str,
+    *,
+    raw_json: bool = False,
+    stdout: TextIO | None = None,
+) -> int:
     command = codex_exec_command(real_codex_bin(), prompt=prompt, resume_id=thread.id)
-    return run_codex_json_stream(command, raw_json=raw_json)
+    kwargs: dict[str, object] = {"raw_json": raw_json}
+    if stdout is not None:
+        kwargs["stdout"] = stdout
+        kwargs["stderr_to_stdout"] = True
+    return run_codex_json_stream(command, **kwargs)
+
+
+class CursesStreamWriter:
+    def __init__(self, app: TuiApp) -> None:
+        self.app = app
+        self.pending = ""
+
+    def write(self, text: str) -> int:
+        if not text:
+            return 0
+        parts = text.split("\n")
+        self.pending += parts[0]
+        for part in parts[1:]:
+            self.app.append_stream_line(self.pending)
+            self.pending = part
+        self.app.draw_stream(self.pending or None)
+        return len(text)
+
+    def flush(self) -> None:
+        self.app.draw_stream(self.pending or None)
+
+    def close_line(self) -> None:
+        if self.pending:
+            self.app.append_stream_line(self.pending)
+            self.pending = ""
+            self.app.draw_stream()
 
 
 def safe_curs_set(curses: object, visibility: int) -> None:

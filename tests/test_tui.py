@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from io import StringIO
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -7,7 +8,7 @@ from unittest.mock import patch
 import path_bootstrap  # noqa: F401
 
 from codex_plus.models import ThreadRow
-from codex_plus.tui import TuiApp, stream_selected_thread, visible_lines, wrap_lines
+from codex_plus.tui import CursesStreamWriter, TuiApp, stream_selected_thread, visible_lines, wrap_lines
 
 
 class TuiTests(unittest.TestCase):
@@ -32,6 +33,44 @@ class TuiTests(unittest.TestCase):
             raw_json=False,
         )
 
+    @patch("codex_plus.tui.run_codex_json_stream")
+    def test_stream_selected_thread_routes_output_back_to_tui(self, stream_mock) -> None:
+        stream_mock.return_value = 0
+        thread = sample_thread()
+        output = StringIO()
+
+        with patch("codex_plus.tui.real_codex_bin", return_value=Path("/tmp/codex")):
+            result = stream_selected_thread(thread, "Continue", stdout=output)
+
+        self.assertEqual(result, 0)
+        stream_mock.assert_called_once_with(
+            ["/tmp/codex", "exec", "resume", "--json", "019f-test-tui", "Continue"],
+            raw_json=False,
+            stdout=output,
+            stderr_to_stdout=True,
+        )
+
+    def test_curses_stream_writer_buffers_partial_lines_and_draws(self) -> None:
+        app = TuiApp([sample_thread()], lambda _thread, _prompt, _stdout: 0)
+        draws: list[tuple[list[str], str | None]] = []
+
+        def draw_stream(current_line: str | None = None) -> None:
+            draws.append((list(app.stream_lines), current_line))
+
+        app.draw_stream = draw_stream  # type: ignore[method-assign]
+        writer = CursesStreamWriter(app)
+
+        self.assertEqual(writer.write("hel"), 3)
+        self.assertEqual(draws[-1], ([], "hel"))
+
+        writer.write("lo\nnext\n")
+        self.assertEqual(app.stream_lines, ["hello", "next"])
+        self.assertEqual(draws[-1], (["hello", "next"], None))
+
+        writer.write("partial")
+        writer.close_line()
+        self.assertEqual(app.stream_lines, ["hello", "next", "partial"])
+
     def test_wrap_lines_breaks_long_preview_text_to_fit_terminal_width(self) -> None:
         lines = wrap_lines(["abcdefghij"], width=5)
 
@@ -44,7 +83,10 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(visible_lines(lines, width=20, height=2, top=99), ["three", "four"])
 
     def test_focus_toggle_moves_arrows_between_sessions_and_preview(self) -> None:
-        app = TuiApp([sample_thread("019f-test-one"), sample_thread("019f-test-two")], lambda _thread, _prompt: 0)
+        app = TuiApp(
+            [sample_thread("019f-test-one"), sample_thread("019f-test-two")],
+            lambda _thread, _prompt, _stdout: 0,
+        )
 
         app.move_focused(1)
         self.assertEqual(app.selected, 1)
@@ -58,7 +100,7 @@ class TuiTests(unittest.TestCase):
     def test_selection_and_mode_changes_reset_preview_scroll(self) -> None:
         app = TuiApp(
             [sample_thread("019f-test-one"), sample_thread("019f-test-two")],
-            lambda _thread, _prompt: 0,
+            lambda _thread, _prompt, _stdout: 0,
             preview_top=8,
         )
 

@@ -39,7 +39,7 @@ CodexPlus v0.1 focuses on local history, terminal navigation, and streamed Codex
 - Search across clean user and assistant messages.
 - Scope list, browse, resume, and search commands to the current git workspace with `--here`.
 - Scope single-session commands such as view, final, user, files, and path to the current git workspace with `--here`.
-- Open a terminal UI with a session list, clean transcript preview, mode toggles, and CodexPlus-owned JSON streaming for follow-up prompts.
+- Open a terminal UI with a session list, clean transcript preview, mode toggles, and an in-TUI CodexPlus-owned JSON stream for follow-up prompts.
 - Pick sessions and search matches through optional `fzf` previews with keyboard actions for resume, clean view, final answer, user turns, file references, and direct file editing.
 - List files mentioned in clean session history and optionally jump to one in `$EDITOR`.
 - Run Codex through `codex exec --json` and stream clean assistant text from CodexPlus instead of opening Codex's interactive TUI.
@@ -90,7 +90,7 @@ cxp tui
 ```
 
 Inside the TUI, press Tab to switch focus between the session list and preview pane, use arrows or PageUp/PageDown to move or scroll the focused pane, switch preview modes with `v`, `a`, `f`, and `u`, and press Enter to type a follow-up prompt.
-The follow-up is run through `codex exec resume --json`, so CodexPlus streams the assistant text instead of opening Codex's interactive TUI.
+The follow-up is run through `codex exec resume --json` inside a CodexPlus-owned stream pane, so CodexPlus captures Codex output instead of opening Codex's interactive TUI or dropping back to the shell.
 
 List recent sessions:
 

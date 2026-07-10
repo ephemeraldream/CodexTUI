@@ -74,13 +74,14 @@ def run_codex_json_stream(
     *,
     raw_json: bool = False,
     stdout: TextIO | None = None,
+    stderr_to_stdout: bool = False,
 ) -> int:
     out = stdout or sys.stdout
     try:
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
-            stderr=None,
+            stderr=subprocess.STDOUT if stderr_to_stdout else None,
             text=True,
             bufsize=1,
         )
