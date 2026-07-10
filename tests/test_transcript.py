@@ -34,6 +34,12 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual(messages[0].text, "Run the autonomous iteration")
         self.assertEqual(messages[1].text, '{"success": true}')
 
+    def test_event_user_messages_skip_bootstrap_context(self) -> None:
+        messages = read_messages(FIXTURES / "rollout-event-bootstrap.jsonl")
+        self.assertEqual([message.role for message in messages], ["user", "assistant"])
+        self.assertEqual(messages[0].text, "Show me the final answer")
+        self.assertNotIn("hidden bootstrap", "\n".join(message.text for message in messages))
+
     def test_render_thread_includes_header_and_messages(self) -> None:
         thread = ThreadRow(
             id="019f-test-basic",

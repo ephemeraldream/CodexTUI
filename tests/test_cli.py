@@ -108,6 +108,43 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("No matches.", result.stdout)
 
+    def test_clean_cli_commands_hide_event_bootstrap_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            session_dir = home / "sessions" / "2026" / "07" / "10"
+            session_dir.mkdir(parents=True)
+            target = session_dir / "rollout-2026-07-10T12-00-00-019f-test-event-bootstrap.jsonl"
+            target.write_text(
+                (FIXTURES / "rollout-event-bootstrap.jsonl").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            search_result = subprocess.run(
+                [sys.executable, "-m", "codex_plus", "search", "hidden bootstrap"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            user_result = subprocess.run(
+                [sys.executable, "-m", "codex_plus", "user", "last", "--no-pager"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(search_result.returncode, 1)
+        self.assertIn("No matches.", search_result.stdout)
+        self.assertEqual(user_result.returncode, 0)
+        self.assertIn("Show me the final answer", user_result.stdout)
+        self.assertNotIn("hidden bootstrap", user_result.stdout)
+
     @patch("codex_plus.cli.view_thread")
     def test_picker_view_action_renders_clean_transcript_instead_of_resuming(self, view_mock) -> None:
         view_mock.return_value = 0

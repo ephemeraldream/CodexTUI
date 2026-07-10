@@ -32,7 +32,7 @@ def read_messages(path: Path) -> list[ChatMessage]:
                 payload_type = payload.get("type")
                 if payload_type == "user_message":
                     text = text_from_payload(payload)
-                    if text:
+                    if text and not looks_like_bootstrap_context(text):
                         event_messages.append(ChatMessage(timestamp, "user", "", text))
                 elif payload_type == "agent_message":
                     text = text_from_payload(payload)
