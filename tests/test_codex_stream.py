@@ -118,6 +118,42 @@ class CodexStreamTests(unittest.TestCase):
         )
         self.assertEqual(renderer.render_line(rollback_line), "[thread] rolled back 1 turn.")
 
+    def test_renderer_streams_token_count_status(self) -> None:
+        line = json_line(
+            "event_msg",
+            {
+                "type": "token_count",
+                "info": {
+                    "last_token_usage": {"total_tokens": 71625},
+                    "total_token_usage": {"total_tokens": 231517},
+                    "model_context_window": 258400,
+                },
+                "rate_limits": {
+                    "primary": {"used_percent": 6.0},
+                    "secondary": {"used_percent": 43.5},
+                },
+            },
+        )
+
+        self.assertEqual(
+            text_from_json_line(line),
+            "[tokens] last 71.6k, session 231.5k, context 231.5k / 258.4k (89.6%), rate primary 6%/secondary 43.5%",
+        )
+
+    def test_renderer_streams_token_count_limit_status(self) -> None:
+        line = json_line(
+            "event_msg",
+            {
+                "type": "token_count",
+                "rate_limits": {
+                    "primary": {"used_percent": "100"},
+                    "rate_limit_reached_type": "primary",
+                },
+            },
+        )
+
+        self.assertEqual(text_from_json_line(line), "[tokens] rate primary 100%, limit reached: primary")
+
     def test_autonomous_status_json_is_not_streamed_as_codex_text(self) -> None:
         line = json_line(
             "event_msg",

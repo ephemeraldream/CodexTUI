@@ -107,6 +107,8 @@ def text_from_event_payload(
         return f"[tool] {label} completed{suffix}."
     if payload_type == "context_compacted":
         return "[context] compacted"
+    if payload_type == "token_count":
+        return render_token_count(payload)
     if payload_type == "item_completed":
         return render_completed_item(payload)
     if payload_type == "thread_rolled_back":
@@ -256,6 +258,54 @@ def render_thread_rollback(payload: dict[str, object]) -> str:
     return f"[thread] rolled back {count} {label}."
 
 
+def render_token_count(payload: dict[str, object]) -> str:
+    info = payload.get("info")
+    rate_limits = payload.get("rate_limits")
+    parts: list[str] = []
+    if isinstance(info, dict):
+        last_usage = info.get("last_token_usage")
+        total_usage = info.get("total_token_usage")
+        last_total = token_total(last_usage)
+        session_total = token_total(total_usage)
+        if last_total:
+            parts.append(f"last {format_number(last_total)}")
+        if session_total:
+            parts.append(f"session {format_number(session_total)}")
+        context_window = number_value(info.get("model_context_window"))
+        if session_total and context_window:
+            percent = session_total / context_window * 100
+            parts.append(f"context {format_number(session_total)} / {format_number(context_window)} ({format_percent(percent)})")
+        elif context_window:
+            parts.append(f"context window {format_number(context_window)}")
+    if isinstance(rate_limits, dict):
+        rate_text = render_rate_limits(rate_limits)
+        if rate_text:
+            parts.append(rate_text)
+    return f"[tokens] {', '.join(parts)}" if parts else "[tokens] updated"
+
+
+def token_total(value: object) -> float | None:
+    if not isinstance(value, dict):
+        return None
+    return number_value(value.get("total_tokens"))
+
+
+def render_rate_limits(rate_limits: dict[str, object]) -> str:
+    labels: list[str] = []
+    for key in ("primary", "secondary"):
+        value = rate_limits.get(key)
+        if not isinstance(value, dict):
+            continue
+        used = number_value(value.get("used_percent"))
+        if used is not None:
+            labels.append(f"{key} {format_percent(used)}")
+    reached = str(rate_limits.get("rate_limit_reached_type") or "").strip()
+    prefix = f"rate {'/'.join(labels)}" if labels else ""
+    if reached:
+        return f"{prefix}, limit reached: {reached}" if prefix else f"limit reached: {reached}"
+    return prefix
+
+
 def label_from_mcp_invocation(value: object) -> str:
     if not isinstance(value, dict):
         return "mcp_tool"
@@ -331,6 +381,38 @@ def duration_text(value: object) -> str:
     if total < 10:
         return f"{total:.1f}s"
     return f"{total:.0f}s"
+
+
+def number_value(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def format_number(value: float) -> str:
+    if value >= 1_000_000:
+        return trim_decimal(value / 1_000_000) + "m"
+    if value >= 1_000:
+        return trim_decimal(value / 1_000) + "k"
+    if value.is_integer():
+        return str(int(value))
+    return trim_decimal(value)
+
+
+def format_percent(value: float) -> str:
+    return trim_decimal(value) + "%"
+
+
+def trim_decimal(value: float) -> str:
+    text = f"{value:.1f}"
+    return text[:-2] if text.endswith(".0") else text
 
 
 def reasoning_summary_text(value: object) -> str:
