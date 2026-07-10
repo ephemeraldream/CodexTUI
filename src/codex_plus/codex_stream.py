@@ -107,6 +107,10 @@ def text_from_event_payload(
         return f"[tool] {label} completed{suffix}."
     if payload_type == "context_compacted":
         return "[context] compacted"
+    if payload_type == "item_completed":
+        return render_completed_item(payload)
+    if payload_type == "thread_rolled_back":
+        return render_thread_rollback(payload)
     return None
 
 
@@ -226,6 +230,30 @@ def render_patch_result(payload: dict[str, object], label: str) -> str:
     if stderr:
         detail = f"{detail}\n{stderr}" if detail else f"\n{stderr}"
     return f"[tool] {label} {status}{detail}"
+
+
+def render_completed_item(payload: dict[str, object]) -> str:
+    item = payload.get("item")
+    if not isinstance(item, dict):
+        return "[item] completed"
+    item_type = str(item.get("type") or "item").strip() or "item"
+    prefix = "[plan]" if item_type.casefold() == "plan" else f"[item] {item_type}"
+    text = str(item.get("text") or "").strip()
+    if text:
+        return f"{prefix} completed\n{text}"
+    detail = compact_value(item)
+    suffix = f": {detail}" if detail else ""
+    return f"{prefix} completed{suffix}"
+
+
+def render_thread_rollback(payload: dict[str, object]) -> str:
+    turns = payload.get("num_turns")
+    try:
+        count = int(turns)
+    except (TypeError, ValueError):
+        return "[thread] rolled back."
+    label = "turn" if count == 1 else "turns"
+    return f"[thread] rolled back {count} {label}."
 
 
 def label_from_mcp_invocation(value: object) -> str:

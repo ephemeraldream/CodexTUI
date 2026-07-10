@@ -98,6 +98,26 @@ class CodexStreamTests(unittest.TestCase):
         self.assertEqual(renderer.render_line(task_line), "[task] Codex turn started.")
         self.assertEqual(renderer.render_line(patch_line), "[tool] apply_patch applied: app.py, test_app.py")
 
+    def test_renderer_streams_completed_plan_and_thread_rollback(self) -> None:
+        plan_line = json_line(
+            "event_msg",
+            {
+                "type": "item_completed",
+                "item": {
+                    "type": "Plan",
+                    "text": "# Plan\n\n1. Inspect the TUI.\n2. Add scrollback.",
+                },
+            },
+        )
+        rollback_line = json_line("event_msg", {"type": "thread_rolled_back", "num_turns": 1})
+        renderer = CodexStreamRenderer()
+
+        self.assertEqual(
+            renderer.render_line(plan_line),
+            "[plan] completed\n# Plan\n\n1. Inspect the TUI.\n2. Add scrollback.",
+        )
+        self.assertEqual(renderer.render_line(rollback_line), "[thread] rolled back 1 turn.")
+
     def test_autonomous_status_json_is_not_streamed_as_codex_text(self) -> None:
         line = json_line(
             "event_msg",
