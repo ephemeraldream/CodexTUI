@@ -203,6 +203,40 @@ class CodexStreamTests(unittest.TestCase):
 
         self.assertIsNone(text_from_json_line(line))
 
+    def test_renderer_streams_user_message_events(self) -> None:
+        line = json_line("event_msg", {"type": "user_message", "message": "Fix the failing test."})
+
+        self.assertEqual(text_from_json_line(line), "[user] Fix the failing test.")
+
+    def test_renderer_cleans_autonomous_user_message_events(self) -> None:
+        line = json_line(
+            "event_msg",
+            {
+                "type": "user_message",
+                "message": (
+                    "You are working autonomously towards an objective given below.\n"
+                    "This is iteration 26.\n\n"
+                    "## Instructions\n\n"
+                    "1. Read notes first.\n\n"
+                    "## Objective\n\n"
+                    "Build a CodexPlus-owned TUI."
+                ),
+            },
+        )
+
+        self.assertEqual(text_from_json_line(line), "[user] Build a CodexPlus-owned TUI.")
+
+    def test_renderer_suppresses_bootstrap_user_message_events(self) -> None:
+        line = json_line(
+            "event_msg",
+            {
+                "type": "user_message",
+                "message": "# AGENTS.md instructions\n\n<environment_context>hidden</environment_context>",
+            },
+        )
+
+        self.assertIsNone(text_from_json_line(line))
+
     def test_codex_exec_command_uses_json_mode_for_new_prompt(self) -> None:
         command = codex_exec_command(Path("/tmp/codex"), prompt="Fix the bug", resume_id=None)
 

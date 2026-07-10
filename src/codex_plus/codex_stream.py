@@ -7,7 +7,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TextIO
 
-from .transcript import looks_like_autonomous_status_update, text_from_payload
+from .transcript import (
+    clean_user_text,
+    looks_like_autonomous_status_update,
+    looks_like_bootstrap_context,
+    text_from_payload,
+)
 
 
 @dataclass
@@ -90,6 +95,8 @@ def text_from_event_payload(
     payload_type = payload.get("type")
     if payload_type in {"agent_message", "task_complete"}:
         return None
+    if payload_type == "user_message":
+        return render_user_message(payload)
     if payload_type == "task_started":
         return "[task] Codex turn started."
     if payload_type == "turn_aborted":
@@ -116,6 +123,13 @@ def text_from_event_payload(
     if payload_type == "thread_rolled_back":
         return render_thread_rollback(payload)
     return None
+
+
+def render_user_message(payload: dict[str, object]) -> str | None:
+    text = text_from_payload(payload)
+    if not text or looks_like_bootstrap_context(text):
+        return None
+    return f"[user] {compact_value(clean_user_text(text), limit=800)}"
 
 
 def text_from_response_item(

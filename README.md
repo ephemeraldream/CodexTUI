@@ -92,7 +92,7 @@ cxp tui
 Inside the TUI, press Tab to switch focus between the session list and preview pane, use arrows or PageUp/PageDown to move or scroll the focused pane, press `r` to refresh sessions, switch preview modes with `v`, `a`, `f`, `u`, and `o`, press Enter to type a follow-up prompt, or press `n` to start a fresh Codex prompt.
 The `o` preview mode shows files referenced in the selected session, using the same clean transcript parsing as `cxp files`.
 Follow-ups run through `codex exec resume --json`, and fresh prompts run through `codex exec --json`, inside a CodexPlus-owned stream pane, so CodexPlus captures Codex output instead of opening Codex's interactive TUI or dropping back to the shell.
-The live stream also shows readable task, command, patch, search, MCP, plan, rollback, token, context compaction, rate-limit, and tool-output activity so long-running turns do not look silent while Codex is working.
+The live stream also shows the submitted prompt plus readable task, command, patch, search, MCP, plan, rollback, token, context compaction, rate-limit, and tool-output activity so long-running turns do not look silent while Codex is working.
 After the stream finishes, use arrows or PageUp/PageDown to inspect earlier output before returning to the session dashboard.
 
 List recent sessions:
@@ -169,7 +169,7 @@ Run a new non-interactive Codex turn through a CodexPlus-controlled JSON stream:
 cxp stream "fix the failing test"
 ```
 
-The default stream renders assistant messages and readable task, tool, token, context compaction, and rate-limit activity.
+The default stream renders the submitted prompt, assistant messages, and readable task, tool, token, context compaction, and rate-limit activity.
 Use `--raw-json` when you need the original JSONL events.
 
 Resume an existing session through the same stream path:
