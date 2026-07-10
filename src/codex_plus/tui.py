@@ -19,12 +19,14 @@ class StreamOutput(Protocol):
 
 
 StreamRunner = Callable[[ThreadRow, str, StreamOutput], int]
+ThreadLoader = Callable[[], list[ThreadRow]]
 
 
 @dataclass
 class TuiApp:
     threads: list[ThreadRow]
     stream_runner: StreamRunner
+    thread_loader: ThreadLoader | None = None
     mode: str = "chat"
     selected: int = 0
     top: int = 0
@@ -67,6 +69,8 @@ class TuiApp:
                 self.set_mode("user")
             elif key in (ord("a"),):
                 self.set_mode("assistant")
+            elif key in (ord("r"),):
+                self.refresh_threads()
             elif key in (10, 13, curses.KEY_ENTER):
                 self.ask_selected()
 
@@ -101,6 +105,22 @@ class TuiApp:
         self.preview_top = 0
         self.status = f"Preview mode: {mode}."
 
+    def refresh_threads(self) -> None:
+        self.preview_cache.clear()
+        if self.thread_loader is None:
+            self.status = "Preview cache refreshed."
+            return
+        selected_id = self.selected_thread().id if self.threads else ""
+        refreshed = self.thread_loader()
+        if not refreshed:
+            self.status = "Refresh found no sessions; keeping current list."
+            return
+        self.threads = refreshed
+        self.selected = selection_index_for_thread(self.threads, selected_id, self.selected)
+        self.top = min(self.top, self.selected)
+        self.preview_top = 0
+        self.status = f"Refreshed {len(self.threads)} sessions."
+
     def draw(self) -> None:
         curses = self.curses
         stdscr = self.stdscr
@@ -128,7 +148,7 @@ class TuiApp:
         self.draw_sessions(list_width, body_height)
         self.draw_preview(preview_x, 2, preview_width, body_height - 1)
 
-        help_text = "tab focus | arrows move/scroll | enter ask+stream | v chat | a assistant | f final | u user | q quit"
+        help_text = "tab focus | arrows move/scroll | enter ask+stream | r refresh | v/a/f/u modes | q quit"
         add_text(stdscr, height - 2, 0, help_text, width, curses.A_REVERSE)
         add_text(stdscr, height - 1, 0, self.status, width)
         stdscr.refresh()
@@ -290,13 +310,18 @@ def run_tui(
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         print("cxp tui needs an interactive terminal.", file=sys.stderr)
         return 2
-    threads = CodexStore().load_threads(
-        include_archived=include_archived,
-        limit=limit,
-        query=query,
-        source=source,
-        cwd=cwd,
-    )
+    store = CodexStore()
+
+    def load_threads() -> list[ThreadRow]:
+        return store.load_threads(
+            include_archived=include_archived,
+            limit=limit,
+            query=query,
+            source=source,
+            cwd=cwd,
+        )
+
+    threads = load_threads()
     if not threads:
         print("No sessions found.")
         return 0
@@ -304,7 +329,7 @@ def run_tui(
     def runner(thread: ThreadRow, prompt: str, stdout: StreamOutput) -> int:
         return stream_selected_thread(thread, prompt, raw_json=raw_json, stdout=stdout)
 
-    return run_curses_app(TuiApp(threads, runner))
+    return run_curses_app(TuiApp(threads, runner, thread_loader=load_threads))
 
 
 def run_curses_app(app: TuiApp) -> int:
@@ -402,6 +427,13 @@ def visible_lines(lines: list[str], width: int, height: int, top: int) -> list[s
 def clamped_scroll_top(total_lines: int, height: int, requested: int) -> int:
     max_top = max(0, total_lines - max(1, height))
     return clamp(requested, 0, max_top)
+
+
+def selection_index_for_thread(threads: list[ThreadRow], selected_id: str, fallback: int) -> int:
+    for idx, thread in enumerate(threads):
+        if thread.id == selected_id:
+            return idx
+    return clamp(fallback, 0, len(threads) - 1)
 
 
 def clamp(value: int, minimum: int, maximum: int) -> int:

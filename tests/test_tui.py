@@ -131,6 +131,54 @@ class TuiTests(unittest.TestCase):
         app.set_mode("final")
         self.assertEqual(app.preview_top, 0)
 
+    def test_refresh_threads_preserves_selected_session_and_clears_preview_cache(self) -> None:
+        refreshed = [sample_thread("019f-test-new"), sample_thread("019f-test-two")]
+        app = TuiApp(
+            [sample_thread("019f-test-one"), sample_thread("019f-test-two")],
+            lambda _thread, _prompt, _stdout: 0,
+            thread_loader=lambda: refreshed,
+            selected=1,
+            top=1,
+            preview_top=6,
+        )
+        app.preview_cache[("019f-test-two", "chat")] = ["stale"]
+
+        app.refresh_threads()
+
+        self.assertEqual(app.threads, refreshed)
+        self.assertEqual(app.selected, 1)
+        self.assertEqual(app.top, 1)
+        self.assertEqual(app.preview_top, 0)
+        self.assertEqual(app.preview_cache, {})
+        self.assertEqual(app.status, "Refreshed 2 sessions.")
+
+    def test_refresh_threads_falls_back_when_selected_session_disappears(self) -> None:
+        app = TuiApp(
+            [sample_thread("019f-test-one"), sample_thread("019f-test-two")],
+            lambda _thread, _prompt, _stdout: 0,
+            thread_loader=lambda: [sample_thread("019f-test-new")],
+            selected=1,
+            top=1,
+        )
+
+        app.refresh_threads()
+
+        self.assertEqual(app.selected, 0)
+        self.assertEqual(app.top, 0)
+
+    def test_refresh_threads_keeps_current_list_when_loader_returns_no_sessions(self) -> None:
+        threads = [sample_thread("019f-test-one")]
+        app = TuiApp(
+            threads,
+            lambda _thread, _prompt, _stdout: 0,
+            thread_loader=lambda: [],
+        )
+
+        app.refresh_threads()
+
+        self.assertEqual(app.threads, threads)
+        self.assertEqual(app.status, "Refresh found no sessions; keeping current list.")
+
 
 def sample_thread(thread_id: str = "019f-test-tui") -> ThreadRow:
     return ThreadRow(

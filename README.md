@@ -89,7 +89,7 @@ Open the CodexPlus terminal UI:
 cxp tui
 ```
 
-Inside the TUI, press Tab to switch focus between the session list and preview pane, use arrows or PageUp/PageDown to move or scroll the focused pane, switch preview modes with `v`, `a`, `f`, and `u`, and press Enter to type a follow-up prompt.
+Inside the TUI, press Tab to switch focus between the session list and preview pane, use arrows or PageUp/PageDown to move or scroll the focused pane, press `r` to refresh sessions, switch preview modes with `v`, `a`, `f`, and `u`, and press Enter to type a follow-up prompt.
 The follow-up is run through `codex exec resume --json` inside a CodexPlus-owned stream pane, so CodexPlus captures Codex output instead of opening Codex's interactive TUI or dropping back to the shell.
 The live stream also shows readable task, command, patch, search, MCP, plan, rollback, token, context, rate-limit, and tool-output activity so long-running turns do not look silent while Codex is working.
 After the stream finishes, use arrows or PageUp/PageDown to inspect earlier output before returning to the session dashboard.
