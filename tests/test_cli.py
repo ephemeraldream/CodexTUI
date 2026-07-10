@@ -168,6 +168,18 @@ class CliTests(unittest.TestCase):
         self.assertEqual(args.mode, "chat")
         self.assertFalse(args.open)
 
+    @patch("codex_plus.cli.files_thread")
+    def test_picker_edit_file_action_opens_file_picker(self, files_mock) -> None:
+        files_mock.return_value = 0
+
+        result = handle_session_selection(PickerSelection("edit_file", "019f-test-basic"), mode="chat")
+
+        self.assertEqual(result, 0)
+        args = files_mock.call_args.args[0]
+        self.assertEqual(args.selector, "019f-test-basic")
+        self.assertEqual(args.mode, "chat")
+        self.assertTrue(args.open)
+
 
 if __name__ == "__main__":
     unittest.main()

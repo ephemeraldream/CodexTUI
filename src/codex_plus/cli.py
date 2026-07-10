@@ -339,6 +339,10 @@ def handle_session_selection(selection: PickerSelection, *, mode: str) -> int:
         return files_thread(
             argparse.Namespace(selector=selection.value, mode=mode, json=False, open=False, editor=None)
         )
+    if selection.action == "edit_file":
+        return files_thread(
+            argparse.Namespace(selector=selection.value, mode=mode, json=False, open=True, editor=None)
+        )
     print(f"Unknown picker action: {selection.action}", file=sys.stderr)
     return 2
 

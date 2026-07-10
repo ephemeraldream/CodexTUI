@@ -16,6 +16,7 @@ ACTION_KEYS = {
     "ctrl-f": "final",
     "ctrl-u": "user",
     "ctrl-o": "files",
+    "ctrl-e": "edit_file",
 }
 EXPECT_ACTION_KEYS = ",".join(ACTION_KEYS)
 
@@ -151,7 +152,7 @@ def session_header(allow_actions: bool) -> str:
 def action_header(target: str, *, search_word: str) -> str:
     return (
         f"enter resumes {target}, ctrl-v views, ctrl-f final, ctrl-u user turns, "
-        f"ctrl-o files, preview is clean history, use / to {search_word}, esc cancels"
+        f"ctrl-o files, ctrl-e edits a file, preview is clean history, use / to {search_word}, esc cancels"
     )
 
 

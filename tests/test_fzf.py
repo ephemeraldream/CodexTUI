@@ -33,7 +33,7 @@ class FzfTests(unittest.TestCase):
         run_mock.return_value = subprocess.CompletedProcess(
             ["fzf"],
             0,
-            stdout=f"ctrl-o\n{thread.id}\t2026-07-10\n",
+            stdout=f"ctrl-e\n{thread.id}\t2026-07-10\n",
             stderr="",
         )
 
@@ -41,11 +41,12 @@ class FzfTests(unittest.TestCase):
 
         self.assertIsNotNone(selection)
         assert selection is not None
-        self.assertEqual(selection.action, "files")
+        self.assertEqual(selection.action, "edit_file")
         self.assertEqual(selection.value, thread.id)
         command = run_mock.call_args.args[0]
-        self.assertIn("--expect=ctrl-v,ctrl-f,ctrl-u,ctrl-o", command)
+        self.assertIn("--expect=ctrl-v,ctrl-f,ctrl-u,ctrl-o,ctrl-e", command)
         self.assertIn("ctrl-v views", " ".join(command))
+        self.assertIn("ctrl-e edits a file", " ".join(command))
 
     @patch("codex_plus.fzf.subprocess.run")
     def test_resume_picker_keeps_plain_resume_only_header(self, run_mock) -> None:
@@ -63,7 +64,7 @@ class FzfTests(unittest.TestCase):
         assert selection is not None
         self.assertEqual(selection.action, "resume")
         command = run_mock.call_args.args[0]
-        self.assertNotIn("--expect=ctrl-v,ctrl-f,ctrl-u,ctrl-o", command)
+        self.assertNotIn("--expect=ctrl-v,ctrl-f,ctrl-u,ctrl-o,ctrl-e", command)
         self.assertIn("enter resumes selected session", " ".join(command))
 
     @patch("codex_plus.fzf.subprocess.run")
@@ -81,6 +82,23 @@ class FzfTests(unittest.TestCase):
         self.assertIsNotNone(selection)
         assert selection is not None
         self.assertEqual(selection.action, "final")
+        self.assertEqual(selection.value, thread.id)
+
+    @patch("codex_plus.fzf.subprocess.run")
+    def test_choose_search_match_supports_file_edit_action(self, run_mock) -> None:
+        thread = sample_thread()
+        run_mock.return_value = subprocess.CompletedProcess(
+            ["fzf"],
+            0,
+            stdout=f"ctrl-e\n{thread.id}\t2026-07-10\n",
+            stderr="",
+        )
+
+        selection = choose_search_match([SearchMatch(thread, "assistant", "fixed it")], mode="chat")
+
+        self.assertIsNotNone(selection)
+        assert selection is not None
+        self.assertEqual(selection.action, "edit_file")
         self.assertEqual(selection.value, thread.id)
 
 
