@@ -25,10 +25,22 @@ class CodexStore:
     ) -> list[ThreadRow]:
         db_path = self.state_db_path()
         if db_path is None:
-            return self.scan_threads_from_files(limit=limit)
+            return self.scan_threads_from_files(
+                include_archived=include_archived,
+                limit=limit,
+                query=query,
+                source=source,
+                cwd=cwd,
+            )
         con = self.open_state_db(db_path)
         if con is None:
-            return self.scan_threads_from_files(limit=limit)
+            return self.scan_threads_from_files(
+                include_archived=include_archived,
+                limit=limit,
+                query=query,
+                source=source,
+                cwd=cwd,
+            )
         clauses: list[str] = []
         params: list[object] = []
         if not include_archived:
@@ -123,15 +135,23 @@ class CodexStore:
         con.row_factory = sqlite3.Row
         return con
 
-    def scan_threads_from_files(self, *, limit: int | None = 80) -> list[ThreadRow]:
-        roots = [self.home / "sessions", self.home / "archived_sessions"]
+    def scan_threads_from_files(
+        self,
+        *,
+        include_archived: bool = False,
+        limit: int | None = 80,
+        query: str | None = None,
+        source: str | None = None,
+        cwd: str | None = None,
+    ) -> list[ThreadRow]:
+        roots = [self.home / "sessions"]
+        if include_archived:
+            roots.append(self.home / "archived_sessions")
         files: list[Path] = []
         for root in roots:
             if root.exists():
                 files.extend(root.rglob("*.jsonl"))
         files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
-        if limit is not None:
-            files = files[:limit]
         threads: list[ThreadRow] = []
         for path in files:
             meta = read_session_meta(path)
@@ -154,6 +174,11 @@ class CodexStore:
                     first_user_message=first,
                 )
             )
+            if not thread_matches_filters(threads[-1], query=query, source=source, cwd=cwd):
+                threads.pop()
+                continue
+            if limit is not None and len(threads) >= limit:
+                break
         return threads
 
 
@@ -213,3 +238,35 @@ def thread_from_path(path: Path) -> ThreadRow:
         preview="",
         first_user_message=first,
     )
+
+
+def thread_matches_filters(
+    thread: ThreadRow,
+    *,
+    query: str | None = None,
+    source: str | None = None,
+    cwd: str | None = None,
+) -> bool:
+    if source and thread.source != source:
+        return False
+    if cwd and not cwd_matches_filter(thread.cwd, cwd):
+        return False
+    if query:
+        needle = query.casefold()
+        haystack = " ".join([thread.title, thread.preview, thread.first_user_message, thread.cwd, thread.id])
+        if needle not in haystack.casefold():
+            return False
+    return True
+
+
+def cwd_matches_filter(thread_cwd: str, cwd_filter: str) -> bool:
+    if not thread_cwd:
+        return False
+    if cwd_filter.casefold() in thread_cwd.casefold():
+        return True
+    try:
+        thread_path = Path(thread_cwd).expanduser().resolve(strict=False)
+        filter_path = Path(cwd_filter).expanduser().resolve(strict=False)
+    except OSError:
+        return False
+    return thread_path == filter_path or filter_path in thread_path.parents

@@ -62,7 +62,9 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("-n", "--limit", type=int, default=80, help="maximum sessions to load")
         p.add_argument("-q", "--query", help="filter sessions by title, prompt, cwd, or id")
         p.add_argument("--source", choices=["cli", "vscode", "exec"], help="filter by session source")
-        p.add_argument("--cwd", help="filter by working directory substring")
+        cwd_group = p.add_mutually_exclusive_group()
+        cwd_group.add_argument("--cwd", help="filter by working directory substring")
+        cwd_group.add_argument("--here", action="store_true", help="filter to the current git workspace or cwd")
 
     browse_p = sub.add_parser("browse", aliases=["b"], help="pick a session and resume it")
     add_common_filters(browse_p)
@@ -116,7 +118,9 @@ def build_parser() -> argparse.ArgumentParser:
     search_p.add_argument("-a", "--all", action="store_true", help="include archived sessions")
     search_p.add_argument("-n", "--limit", type=int, default=40, help="maximum matches to print")
     search_p.add_argument("--source", choices=["cli", "vscode", "exec"], help="filter by source")
-    search_p.add_argument("--cwd", help="filter by working directory substring")
+    search_cwd_group = search_p.add_mutually_exclusive_group()
+    search_cwd_group.add_argument("--cwd", help="filter by working directory substring")
+    search_cwd_group.add_argument("--here", action="store_true", help="filter to the current git workspace or cwd")
     search_p.set_defaults(func=search_threads)
 
     resume_p = sub.add_parser("resume", help="resume a selected Codex session")
@@ -124,7 +128,9 @@ def build_parser() -> argparse.ArgumentParser:
     resume_p.add_argument("-n", "--limit", type=int, default=80)
     resume_p.add_argument("-q", "--query")
     resume_p.add_argument("--source", choices=["cli", "vscode", "exec"])
-    resume_p.add_argument("--cwd")
+    resume_cwd_group = resume_p.add_mutually_exclusive_group()
+    resume_cwd_group.add_argument("--cwd")
+    resume_cwd_group.add_argument("--here", action="store_true", help="filter to the current git workspace or cwd")
     resume_p.set_defaults(func=resume_thread)
 
     path_p = sub.add_parser("path", help="print the rollout JSONL path for a session")
@@ -156,13 +162,29 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def cwd_filter(args: argparse.Namespace) -> str | None:
+    if getattr(args, "here", False):
+        return str(current_project_root())
+    return getattr(args, "cwd", None)
+
+
+def current_project_root(start: Path | None = None) -> Path:
+    current = (start or Path.cwd()).expanduser().resolve(strict=False)
+    if current.is_file():
+        current = current.parent
+    for candidate in (current, *current.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return current
+
+
 def list_threads(args: argparse.Namespace) -> int:
     threads = CodexStore().load_threads(
         include_archived=args.all,
         limit=args.limit,
         query=args.query,
         source=args.source,
-        cwd=args.cwd,
+        cwd=cwd_filter(args),
     )
     if args.json:
         for thread in threads:
@@ -208,7 +230,7 @@ def browse_threads(args: argparse.Namespace) -> int:
         limit=args.limit,
         query=args.query,
         source=args.source,
-        cwd=args.cwd,
+        cwd=cwd_filter(args),
     )
     if not threads:
         print("No sessions found.")
@@ -267,7 +289,12 @@ def files_thread(args: argparse.Namespace) -> int:
 
 def search_threads(args: argparse.Namespace) -> int:
     needle = args.text
-    threads = CodexStore().load_threads(include_archived=args.all, limit=None, source=args.source, cwd=args.cwd)
+    threads = CodexStore().load_threads(
+        include_archived=args.all,
+        limit=None,
+        source=args.source,
+        cwd=cwd_filter(args),
+    )
     matches: list[SearchMatch] = []
     needle_fold = needle.casefold()
     for thread in threads:
@@ -315,7 +342,7 @@ def resume_thread(args: argparse.Namespace) -> int:
         limit=args.limit,
         query=args.query,
         source=args.source,
-        cwd=args.cwd,
+        cwd=cwd_filter(args),
     )
     if not is_available():
         print("Use a session id, or run this in a TTY with fzf installed.", file=sys.stderr)

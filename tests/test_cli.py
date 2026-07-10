@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -145,6 +146,36 @@ class CliTests(unittest.TestCase):
         self.assertIn("Show me the final answer", user_result.stdout)
         self.assertNotIn("hidden bootstrap", user_result.stdout)
 
+    def test_list_here_filters_to_current_git_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            home = root / "codex-home"
+            project = root / "project"
+            nested = project / "src"
+            other_project = root / "other"
+            nested.mkdir(parents=True)
+            other_project.mkdir()
+            (project / ".git").mkdir()
+            write_cli_session(home, "019f-test-here", cwd=str(project), user_message="Project session")
+            write_cli_session(home, "019f-test-elsewhere", cwd=str(other_project), user_message="Other session")
+
+            repo_root = Path(__file__).resolve().parents[1]
+            env = dict(os.environ)
+            env["PYTHONPATH"] = str(repo_root / "src")
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_plus", "list", "--here", "--limit", "20"],
+                cwd=nested,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Project session", result.stdout)
+        self.assertNotIn("Other session", result.stdout)
+
     @patch("codex_plus.cli.view_thread")
     def test_picker_view_action_renders_clean_transcript_instead_of_resuming(self, view_mock) -> None:
         view_mock.return_value = 0
@@ -179,6 +210,26 @@ class CliTests(unittest.TestCase):
         self.assertEqual(args.selector, "019f-test-basic")
         self.assertEqual(args.mode, "chat")
         self.assertTrue(args.open)
+
+
+def write_cli_session(home: Path, session_id: str, *, cwd: str, user_message: str) -> Path:
+    session_dir = home / "sessions" / "2026" / "07" / "10"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    path = session_dir / f"rollout-2026-07-10T10-00-00-{session_id}.jsonl"
+    records = [
+        {
+            "timestamp": "2026-07-10T10:00:00.000Z",
+            "type": "session_meta",
+            "payload": {"id": session_id, "cwd": cwd, "source": "cli"},
+        },
+        {
+            "timestamp": "2026-07-10T10:00:01.000Z",
+            "type": "event_msg",
+            "payload": {"type": "user_message", "message": user_message, "images": []},
+        },
+    ]
+    path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+    return path
 
 
 if __name__ == "__main__":
