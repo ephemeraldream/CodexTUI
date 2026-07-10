@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Protocol, TextIO
 
 from .codex_stream import codex_exec_command, run_codex_json_stream
+from .file_nav import file_hits_for_thread, render_file_hits
 from .models import ThreadRow
 from .paths import real_codex_bin
 from .store import CodexStore
@@ -69,6 +70,8 @@ class TuiApp:
                 self.set_mode("user")
             elif key in (ord("a"),):
                 self.set_mode("assistant")
+            elif key in (ord("o"),):
+                self.set_mode("files")
             elif key in (ord("r"),):
                 self.refresh_threads()
             elif key in (10, 13, curses.KEY_ENTER):
@@ -148,7 +151,7 @@ class TuiApp:
         self.draw_sessions(list_width, body_height)
         self.draw_preview(preview_x, 2, preview_width, body_height - 1)
 
-        help_text = "tab focus | arrows move/scroll | enter ask+stream | r refresh | v/a/f/u modes | q quit"
+        help_text = "tab focus | arrows move/scroll | enter ask+stream | r refresh | v/a/f/u/o modes | q quit"
         add_text(stdscr, height - 2, 0, help_text, width, curses.A_REVERSE)
         add_text(stdscr, height - 1, 0, self.status, width)
         stdscr.refresh()
@@ -185,7 +188,11 @@ class TuiApp:
     def preview_lines(self, thread: ThreadRow) -> list[str]:
         key = (thread.id, self.mode)
         if key not in self.preview_cache:
-            self.preview_cache[key] = render_thread(thread, mode=self.mode, color=False).splitlines()
+            if self.mode == "files":
+                text = render_file_hits(file_hits_for_thread(thread))
+            else:
+                text = render_thread(thread, mode=self.mode, color=False)
+            self.preview_cache[key] = text.splitlines()
         return self.preview_cache[key]
 
     def ask_selected(self) -> None:

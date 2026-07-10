@@ -11,6 +11,9 @@ from codex_plus.models import ThreadRow
 from codex_plus.tui import CursesStreamWriter, TuiApp, stream_selected_thread, visible_lines, wrap_lines
 
 
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
 class TuiTests(unittest.TestCase):
     @patch("codex_plus.tui.run_codex_json_stream")
     def test_stream_selected_thread_uses_codexplus_json_resume(self, stream_mock) -> None:
@@ -130,6 +133,31 @@ class TuiTests(unittest.TestCase):
         app.preview_top = 4
         app.set_mode("final")
         self.assertEqual(app.preview_top, 0)
+
+    def test_files_preview_mode_lists_referenced_files(self) -> None:
+        thread = sample_thread("019f-test-files")
+        thread = ThreadRow(
+            id=thread.id,
+            title=thread.title,
+            cwd="/tmp/project",
+            source=thread.source,
+            archived=thread.archived,
+            rollout_path=str(FIXTURES / "rollout-files.jsonl"),
+            created_at_ms=thread.created_at_ms,
+            updated_at_ms=thread.updated_at_ms,
+            recency_at_ms=thread.recency_at_ms,
+            preview=thread.preview,
+            first_user_message=thread.first_user_message,
+        )
+        app = TuiApp([thread], lambda _thread, _prompt, _stdout: 0)
+
+        app.set_mode("files")
+        lines = "\n".join(app.preview_lines(thread))
+
+        self.assertIn("src/app.py", lines)
+        self.assertIn("tests/test_app.py", lines)
+        self.assertIn("pyproject.toml", lines)
+        self.assertNotIn("src/hidden_tool_call.py", lines)
 
     def test_refresh_threads_preserves_selected_session_and_clears_preview_cache(self) -> None:
         refreshed = [sample_thread("019f-test-new"), sample_thread("019f-test-two")]
