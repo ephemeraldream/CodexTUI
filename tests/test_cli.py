@@ -43,6 +43,7 @@ class CliTests(unittest.TestCase):
             capture_output=True,
             check=True,
         )
+        self.assertIn("tui", result.stdout)
         self.assertIn("files", result.stdout)
         self.assertNotIn("==SUPPRESS==", result.stdout)
         self.assertNotIn("file-preview", result.stdout)
@@ -386,6 +387,35 @@ class CliTests(unittest.TestCase):
         stream_mock.assert_called_once_with(
             ["/tmp/codex", "exec", "resume", "--json", "019f-test-piped", "-"],
             raw_json=False,
+        )
+
+    @patch("codex_plus.cli.run_tui")
+    def test_tui_command_passes_filters_to_terminal_ui(self, tui_mock) -> None:
+        tui_mock.return_value = 0
+        with patch("codex_plus.cli.current_project_root", return_value=Path("/tmp/project")):
+            result = main(
+                [
+                    "tui",
+                    "--here",
+                    "--all",
+                    "--limit",
+                    "12",
+                    "--query",
+                    "streaming",
+                    "--source",
+                    "exec",
+                    "--raw-json",
+                ]
+            )
+
+        self.assertEqual(result, 0)
+        tui_mock.assert_called_once_with(
+            include_archived=True,
+            limit=12,
+            query="streaming",
+            source="exec",
+            cwd=str(Path("/tmp/project")),
+            raw_json=True,
         )
 
     @patch("codex_plus.cli.view_thread")

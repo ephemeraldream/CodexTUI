@@ -18,6 +18,7 @@ from .models import SearchMatch
 from .paths import real_codex_bin
 from .store import CodexStore
 from .transcript import filter_messages, format_ms, one_line, read_messages, render_thread, short_id, truncate
+from .tui import run_tui
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -50,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"CodexPlus {__version__}")
     sub = parser.add_subparsers(
         dest="command",
-        metavar="{browse,list,view,files,assistant,final,user,search,resume,stream,path,stats,install-shim,compress}",
+        metavar="{tui,browse,list,view,files,assistant,final,user,search,resume,stream,path,stats,install-shim,compress}",
     )
 
     def add_hidden_parser(name: str) -> argparse.ArgumentParser:
@@ -74,6 +75,11 @@ def build_parser() -> argparse.ArgumentParser:
     add_common_filters(browse_p)
     browse_p.add_argument("--mode", choices=["chat", "assistant", "final", "user"], default="chat")
     browse_p.set_defaults(func=browse_threads)
+
+    tui_p = sub.add_parser("tui", aliases=["ui"], help="open a CodexPlus terminal UI")
+    add_common_filters(tui_p)
+    tui_p.add_argument("--raw-json", action="store_true", help="show raw Codex JSONL while streaming")
+    tui_p.set_defaults(func=run_tui_command)
 
     list_p = sub.add_parser("list", aliases=["ls", "sessions"], help="list sessions")
     add_common_filters(list_p)
@@ -259,6 +265,17 @@ def browse_threads(args: argparse.Namespace) -> int:
     if not selection:
         return 0
     return handle_session_selection(selection, mode=args.mode)
+
+
+def run_tui_command(args: argparse.Namespace) -> int:
+    return run_tui(
+        include_archived=args.all,
+        limit=args.limit,
+        query=args.query,
+        source=args.source,
+        cwd=cwd_filter(args),
+        raw_json=args.raw_json,
+    )
 
 
 def view_thread(args: argparse.Namespace) -> int:
@@ -526,7 +543,7 @@ case "${{1:-}}" in
     shift
     exec cxp list "$@"
     ;;
-  view|show|assistant|answers|final|user|questions|search|grep|files|stream|ask|stats|path)
+  tui|ui|view|show|assistant|answers|final|user|questions|search|grep|files|stream|ask|stats|path)
     exec cxp "$@"
     ;;
 esac

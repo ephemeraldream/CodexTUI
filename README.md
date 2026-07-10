@@ -15,6 +15,7 @@ CodexPlus provides a small, installable CLI named `cxp`:
 
 ```bash
 cxp h
+cxp tui
 cxp list
 cxp search "dividends"
 cxp search "dividends" --here
@@ -28,7 +29,7 @@ cxp stream "fix the failing test"
 
 ## Current scope
 
-CodexPlus v0.1 focuses on read-only local history and official session resume:
+CodexPlus v0.1 focuses on local history, terminal navigation, and streamed Codex exec turns:
 
 - List Codex sessions from `~/.codex/state_*.sqlite`.
 - Fall back to scanning `~/.codex/sessions/**/*.jsonl`.
@@ -38,6 +39,7 @@ CodexPlus v0.1 focuses on read-only local history and official session resume:
 - Search across clean user and assistant messages.
 - Scope list, browse, resume, and search commands to the current git workspace with `--here`.
 - Scope single-session commands such as view, final, user, files, and path to the current git workspace with `--here`.
+- Open a terminal UI with a session list, clean transcript preview, mode toggles, and CodexPlus-owned JSON streaming for follow-up prompts.
 - Pick sessions and search matches through optional `fzf` previews with keyboard actions for resume, clean view, final answer, user turns, file references, and direct file editing.
 - List files mentioned in clean session history and optionally jump to one in `$EDITOR`.
 - Run Codex through `codex exec --json` and stream clean assistant text from CodexPlus instead of opening Codex's interactive TUI.
@@ -80,6 +82,15 @@ cxp h
 ```
 
 Inside `fzf`, press Enter to resume, Ctrl-V to view clean history, Ctrl-F for the final answer, Ctrl-U for user turns, Ctrl-O for files, or Ctrl-E to pick and edit a mentioned file.
+
+Open the CodexPlus terminal UI:
+
+```bash
+cxp tui
+```
+
+Inside the TUI, select a session with the arrow keys, switch preview modes with `v`, `a`, `f`, and `u`, and press Enter to type a follow-up prompt.
+The follow-up is run through `codex exec resume --json`, so CodexPlus streams the assistant text instead of opening Codex's interactive TUI.
 
 List recent sessions:
 
@@ -178,6 +189,7 @@ codex h
 codex search "dividends"
 codex files last
 codex view last
+codex tui
 codex stream "fix the failing test"
 codex "regular prompt still goes to official Codex"
 ```
