@@ -56,6 +56,48 @@ class CodexStreamTests(unittest.TestCase):
 
         self.assertEqual(renderer.render_line("plain output\n"), "plain output")
 
+    def test_renderer_streams_tool_call_and_output_activity(self) -> None:
+        call_line = json_line(
+            "response_item",
+            {
+                "type": "function_call",
+                "name": "exec_command",
+                "arguments": json.dumps({"cmd": "pytest", "workdir": "/tmp/project"}),
+                "call_id": "call_1",
+            },
+        )
+        output_line = json_line(
+            "response_item",
+            {
+                "type": "function_call_output",
+                "call_id": "call_1",
+                "output": "2 failed, 1 passed\n",
+            },
+        )
+        renderer = CodexStreamRenderer()
+
+        self.assertEqual(renderer.render_line(call_line), "[tool] exec_command: pytest (cwd: /tmp/project)")
+        self.assertEqual(renderer.render_line(output_line), "[tool output] exec_command\n2 failed, 1 passed")
+
+    def test_renderer_streams_patch_and_task_activity(self) -> None:
+        task_line = json_line("event_msg", {"type": "task_started", "turn_id": "turn_1"})
+        patch_line = json_line(
+            "event_msg",
+            {
+                "type": "patch_apply_end",
+                "call_id": "call_2",
+                "success": True,
+                "changes": {
+                    "/tmp/project/src/app.py": {},
+                    "/tmp/project/tests/test_app.py": {},
+                },
+            },
+        )
+        renderer = CodexStreamRenderer()
+
+        self.assertEqual(renderer.render_line(task_line), "[task] Codex turn started.")
+        self.assertEqual(renderer.render_line(patch_line), "[tool] apply_patch applied: app.py, test_app.py")
+
     def test_autonomous_status_json_is_not_streamed_as_codex_text(self) -> None:
         line = json_line(
             "event_msg",

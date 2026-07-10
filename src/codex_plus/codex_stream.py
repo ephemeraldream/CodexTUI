@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TextIO
 
@@ -13,9 +13,10 @@ from .transcript import looks_like_autonomous_status_update, text_from_payload
 @dataclass
 class CodexStreamRenderer:
     last_text: str = ""
+    call_labels: dict[str, str] = field(default_factory=dict)
 
     def render_line(self, line: str) -> str | None:
-        text = text_from_json_line(line)
+        text = text_from_json_line(line, call_labels=self.call_labels)
         if text is None:
             return line.rstrip("\n") if line.strip() else None
         stripped = text.rstrip()
@@ -41,7 +42,11 @@ def codex_exec_command(
     return command
 
 
-def text_from_json_line(line: str) -> str | None:
+def text_from_json_line(
+    line: str,
+    *,
+    call_labels: dict[str, str] | None = None,
+) -> str | None:
     try:
         record = json.loads(line)
     except json.JSONDecodeError:
@@ -53,6 +58,10 @@ def text_from_json_line(line: str) -> str | None:
         return None
     record_type = record.get("type")
     payload_type = payload.get("type")
+    if record_type == "event_msg":
+        event_text = text_from_event_payload(payload, call_labels=call_labels)
+        if event_text:
+            return event_text
     if record_type == "event_msg" and payload_type == "agent_message":
         text = text_from_payload(payload)
         phase = str(payload.get("phase") or "")
@@ -66,7 +75,250 @@ def text_from_json_line(line: str) -> str | None:
         phase = str(payload.get("phase") or "")
         if text and not looks_like_autonomous_status_update(text, phase):
             return text
+    if record_type == "response_item":
+        return text_from_response_item(payload, call_labels=call_labels)
     return None
+
+
+def text_from_event_payload(
+    payload: dict[str, object],
+    *,
+    call_labels: dict[str, str] | None = None,
+) -> str | None:
+    payload_type = payload.get("type")
+    if payload_type in {"agent_message", "task_complete"}:
+        return None
+    if payload_type == "task_started":
+        return "[task] Codex turn started."
+    if payload_type == "turn_aborted":
+        reason = str(payload.get("reason") or "unknown")
+        return f"[task] Codex turn aborted: {reason}."
+    if payload_type == "web_search_end":
+        query = str(payload.get("query") or "").strip()
+        return f"[search] {query}" if query else "[search] completed"
+    if payload_type == "patch_apply_end":
+        label = store_call_label(payload, call_labels, "apply_patch")
+        return render_patch_result(payload, label)
+    if payload_type == "mcp_tool_call_end":
+        label = label_from_mcp_invocation(payload.get("invocation"))
+        store_call_label(payload, call_labels, label)
+        duration = duration_text(payload.get("duration"))
+        suffix = f" in {duration}" if duration else ""
+        return f"[tool] {label} completed{suffix}."
+    if payload_type == "context_compacted":
+        return "[context] compacted"
+    return None
+
+
+def text_from_response_item(
+    payload: dict[str, object],
+    *,
+    call_labels: dict[str, str] | None = None,
+) -> str | None:
+    payload_type = payload.get("type")
+    if payload_type == "function_call":
+        return render_function_call(payload, call_labels=call_labels)
+    if payload_type == "function_call_output":
+        return render_tool_output(payload, call_labels=call_labels)
+    if payload_type == "custom_tool_call":
+        return render_custom_tool_call(payload, call_labels=call_labels)
+    if payload_type == "custom_tool_call_output":
+        return render_tool_output(payload, call_labels=call_labels)
+    if payload_type == "tool_search_call":
+        return render_tool_search_call(payload, call_labels=call_labels)
+    if payload_type == "tool_search_output":
+        return render_tool_search_output(payload, call_labels=call_labels)
+    if payload_type == "web_search_call":
+        action = compact_value(payload.get("action"))
+        return f"[search] {action}" if action else "[search] started"
+    if payload_type == "reasoning":
+        summary = reasoning_summary_text(payload.get("summary"))
+        return f"[reasoning] {summary}" if summary else None
+    return None
+
+
+def render_function_call(
+    payload: dict[str, object],
+    *,
+    call_labels: dict[str, str] | None = None,
+) -> str:
+    name = str(payload.get("name") or "tool")
+    namespace = str(payload.get("namespace") or "")
+    label = f"{namespace}.{name}" if namespace else name
+    store_call_label(payload, call_labels, label)
+    arguments = parse_jsonish(payload.get("arguments"))
+    if isinstance(arguments, dict) and name == "exec_command":
+        command = compact_value(arguments.get("cmd")) or "(no command)"
+        workdir = compact_value(arguments.get("workdir"))
+        cwd = f" (cwd: {workdir})" if workdir else ""
+        return f"[tool] exec_command: {command}{cwd}"
+    rendered_args = compact_value(arguments if arguments is not None else payload.get("arguments"))
+    suffix = f": {rendered_args}" if rendered_args else ""
+    return f"[tool] {label}{suffix}"
+
+
+def render_custom_tool_call(
+    payload: dict[str, object],
+    *,
+    call_labels: dict[str, str] | None = None,
+) -> str:
+    name = str(payload.get("name") or "custom_tool")
+    store_call_label(payload, call_labels, name)
+    value = payload.get("input")
+    if name == "apply_patch":
+        return "[tool] apply_patch"
+    rendered_input = compact_value(parse_jsonish(value) if isinstance(value, str) else value)
+    suffix = f": {rendered_input}" if rendered_input else ""
+    return f"[tool] {name}{suffix}"
+
+
+def render_tool_output(
+    payload: dict[str, object],
+    *,
+    call_labels: dict[str, str] | None = None,
+) -> str | None:
+    label = call_label(payload, call_labels)
+    output = payload.get("output")
+    text = stringify_output(output).rstrip()
+    prefix = f"[tool output] {label}" if label else "[tool output]"
+    if not text:
+        return f"{prefix}: (no output)"
+    return f"{prefix}\n{text}"
+
+
+def render_tool_search_call(
+    payload: dict[str, object],
+    *,
+    call_labels: dict[str, str] | None = None,
+) -> str:
+    store_call_label(payload, call_labels, "tool_search")
+    arguments = payload.get("arguments")
+    rendered = compact_value(arguments)
+    return f"[tool] tool_search: {rendered}" if rendered else "[tool] tool_search"
+
+
+def render_tool_search_output(
+    payload: dict[str, object],
+    *,
+    call_labels: dict[str, str] | None = None,
+) -> str:
+    label = call_label(payload, call_labels) or "tool_search"
+    tools = payload.get("tools")
+    if isinstance(tools, list):
+        return f"[tool output] {label}: {len(tools)} tool group(s)"
+    status = str(payload.get("status") or "").strip()
+    suffix = f": {status}" if status else ""
+    return f"[tool output] {label}{suffix}"
+
+
+def render_patch_result(payload: dict[str, object], label: str) -> str:
+    success = bool(payload.get("success"))
+    status = "applied" if success else "failed"
+    changes = payload.get("changes")
+    changed_paths: list[str] = []
+    if isinstance(changes, dict):
+        changed_paths = [Path(path).name for path in changes.keys()]
+    path_text = ", ".join(changed_paths[:6])
+    if len(changed_paths) > 6:
+        path_text += f", +{len(changed_paths) - 6} more"
+    detail = f": {path_text}" if path_text else ""
+    stderr = stringify_output(payload.get("stderr")).strip()
+    if stderr:
+        detail = f"{detail}\n{stderr}" if detail else f"\n{stderr}"
+    return f"[tool] {label} {status}{detail}"
+
+
+def label_from_mcp_invocation(value: object) -> str:
+    if not isinstance(value, dict):
+        return "mcp_tool"
+    server = str(value.get("server") or "").strip()
+    tool = str(value.get("tool") or "").strip()
+    if server and tool:
+        return f"{server}.{tool}"
+    return tool or server or "mcp_tool"
+
+
+def store_call_label(
+    payload: dict[str, object],
+    call_labels: dict[str, str] | None,
+    label: str,
+) -> str:
+    call_id = str(payload.get("call_id") or "")
+    if call_id and call_labels is not None:
+        call_labels[call_id] = label
+    return label
+
+
+def call_label(payload: dict[str, object], call_labels: dict[str, str] | None) -> str:
+    call_id = str(payload.get("call_id") or "")
+    if call_id and call_labels is not None:
+        return call_labels.get(call_id, "")
+    return ""
+
+
+def parse_jsonish(value: object) -> object:
+    if not isinstance(value, str):
+        return value
+    stripped = value.strip()
+    if not stripped or stripped[0] not in "{[":
+        return value
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        return value
+
+
+def compact_value(value: object, *, limit: int = 240) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        text = value
+    else:
+        text = json.dumps(value, ensure_ascii=False, sort_keys=True)
+    text = " ".join(text.strip().split())
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 12)].rstrip() + " ... [more]"
+
+
+def stringify_output(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, indent=2)
+
+
+def duration_text(value: object) -> str:
+    if not isinstance(value, dict):
+        return ""
+    seconds = value.get("secs")
+    nanos = value.get("nanos")
+    try:
+        total = float(seconds or 0) + float(nanos or 0) / 1_000_000_000
+    except (TypeError, ValueError):
+        return ""
+    if total <= 0:
+        return ""
+    if total < 10:
+        return f"{total:.1f}s"
+    return f"{total:.0f}s"
+
+
+def reasoning_summary_text(value: object) -> str:
+    if isinstance(value, str):
+        return compact_value(value, limit=800)
+    if not isinstance(value, list):
+        return ""
+    parts: list[str] = []
+    for item in value:
+        if isinstance(item, str):
+            parts.append(item)
+        elif isinstance(item, dict):
+            text = text_from_payload(item) or str(item.get("summary") or "")
+            if text:
+                parts.append(text)
+    return compact_value("\n".join(parts), limit=800)
 
 
 def run_codex_json_stream(
