@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import shlex
 import shutil
 import subprocess
@@ -10,38 +11,59 @@ from .models import SearchMatch, ThreadRow
 from .transcript import format_ms, short_id, truncate
 
 
+ACTION_KEYS = {
+    "ctrl-v": "view",
+    "ctrl-f": "final",
+    "ctrl-u": "user",
+    "ctrl-o": "files",
+}
+EXPECT_ACTION_KEYS = ",".join(ACTION_KEYS)
+
+
+@dataclass(frozen=True)
+class PickerSelection:
+    action: str
+    value: str
+
+
 def is_available() -> bool:
     return shutil.which("fzf") is not None and sys.stdin.isatty() and sys.stdout.isatty()
 
 
-def choose_thread(threads: list[ThreadRow], *, mode: str = "chat") -> str | None:
+def choose_thread(
+    threads: list[ThreadRow],
+    *,
+    mode: str = "chat",
+    allow_actions: bool = True,
+) -> PickerSelection | None:
     rows = [row_for_thread(thread) for thread in threads]
     preview = preview_command(mode)
+    args = [
+        "fzf",
+        "--ansi",
+        "--delimiter",
+        "\t",
+        "--with-nth",
+        "2..",
+        "--no-sort",
+        "--prompt",
+        "cxp sessions> ",
+        "--header",
+        session_header(allow_actions),
+        "--preview",
+        preview,
+        "--preview-window",
+        "right,65%,wrap",
+    ]
+    if allow_actions:
+        args.insert(1, f"--expect={EXPECT_ACTION_KEYS}")
     selected = subprocess.run(
-        [
-            "fzf",
-            "--ansi",
-            "--delimiter",
-            "\t",
-            "--with-nth",
-            "2..",
-            "--no-sort",
-            "--prompt",
-            "cxp sessions> ",
-            "--header",
-            "enter resumes selected session, preview is clean history, use / to search, esc cancels",
-            "--preview",
-            preview,
-            "--preview-window",
-            "right,65%,wrap",
-        ],
+        args,
         input="\n".join(rows),
         text=True,
         capture_output=True,
     )
-    if selected.returncode != 0 or not selected.stdout.strip():
-        return None
-    return selected.stdout.split("\t", 1)[0].strip()
+    return parse_selection(selected.returncode, selected.stdout, ACTION_KEYS if allow_actions else {})
 
 
 def choose_file(hits: list[FileHit]) -> FileHit | None:
@@ -74,11 +96,12 @@ def choose_file(hits: list[FileHit]) -> FileHit | None:
     return next((hit for hit in hits if hit.resolved_path == selected_path), None)
 
 
-def choose_search_match(matches: list[SearchMatch], *, mode: str = "chat") -> str | None:
+def choose_search_match(matches: list[SearchMatch], *, mode: str = "chat") -> PickerSelection | None:
     rows = [row_for_search_match(match) for match in matches]
     selected = subprocess.run(
         [
             "fzf",
+            f"--expect={EXPECT_ACTION_KEYS}",
             "--ansi",
             "--delimiter",
             "\t",
@@ -88,7 +111,7 @@ def choose_search_match(matches: list[SearchMatch], *, mode: str = "chat") -> st
             "--prompt",
             "cxp search> ",
             "--header",
-            "enter resumes selected session, preview is clean history, use / to refine, esc cancels",
+            action_header("selected match", search_word="refine"),
             "--preview",
             preview_command(mode),
             "--preview-window",
@@ -98,9 +121,38 @@ def choose_search_match(matches: list[SearchMatch], *, mode: str = "chat") -> st
         text=True,
         capture_output=True,
     )
-    if selected.returncode != 0 or not selected.stdout.strip():
+    return parse_selection(selected.returncode, selected.stdout, ACTION_KEYS)
+
+
+def parse_selection(returncode: int, stdout: str, key_actions: dict[str, str]) -> PickerSelection | None:
+    if returncode != 0 or not stdout.strip():
         return None
-    return selected.stdout.split("\t", 1)[0].strip()
+    lines = [line for line in stdout.splitlines() if line.strip()]
+    if not lines:
+        return None
+    first = lines[0].strip()
+    if first in key_actions:
+        if len(lines) < 2:
+            return None
+        return PickerSelection(key_actions[first], selected_id(lines[1]))
+    return PickerSelection("resume", selected_id(lines[0]))
+
+
+def selected_id(row: str) -> str:
+    return row.split("\t", 1)[0].strip()
+
+
+def session_header(allow_actions: bool) -> str:
+    if not allow_actions:
+        return "enter resumes selected session, preview is clean history, use / to search, esc cancels"
+    return action_header("selected session", search_word="search")
+
+
+def action_header(target: str, *, search_word: str) -> str:
+    return (
+        f"enter resumes {target}, ctrl-v views, ctrl-f final, ctrl-u user turns, "
+        f"ctrl-o files, preview is clean history, use / to {search_word}, esc cancels"
+    )
 
 
 def preview_command(mode: str) -> str:

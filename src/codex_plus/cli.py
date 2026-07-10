@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import __version__
 from .file_nav import FileHit, file_hits_for_thread, render_file_hits
-from .fzf import choose_file, choose_search_match, choose_thread, is_available
+from .fzf import PickerSelection, choose_file, choose_search_match, choose_thread, is_available
 from .models import SearchMatch
 from .paths import real_codex_bin
 from .store import CodexStore
@@ -215,10 +215,10 @@ def browse_threads(args: argparse.Namespace) -> int:
         return 0
     if not is_available():
         return list_threads(args)
-    session_id = choose_thread(threads, mode=args.mode)
-    if not session_id:
+    selection = choose_thread(threads, mode=args.mode)
+    if not selection:
         return 0
-    return exec_resume(session_id)
+    return handle_session_selection(selection, mode=args.mode)
 
 
 def view_thread(args: argparse.Namespace) -> int:
@@ -288,10 +288,10 @@ def search_threads(args: argparse.Namespace) -> int:
         print("No matches.")
         return 1
     if args.open and is_available():
-        session_id = choose_search_match(matches[: args.limit or None], mode=args.mode)
-        if not session_id:
+        selection = choose_search_match(matches[: args.limit or None], mode=args.mode)
+        if not selection:
             return 0
-        return exec_resume(session_id)
+        return handle_session_selection(selection, mode=args.mode)
     print_search_matches(matches, limit=args.limit, mode=args.mode)
     return 0
 
@@ -320,10 +320,33 @@ def resume_thread(args: argparse.Namespace) -> int:
     if not is_available():
         print("Use a session id, or run this in a TTY with fzf installed.", file=sys.stderr)
         return 2
-    session_id = choose_thread(threads, mode="chat")
-    if not session_id:
+    selection = choose_thread(threads, mode="chat", allow_actions=False)
+    if not selection:
         return 0
-    return exec_resume(session_id)
+    return exec_resume(selection.value)
+
+
+def handle_session_selection(selection: PickerSelection, *, mode: str) -> int:
+    if selection.action == "resume":
+        return exec_resume(selection.value)
+    if selection.action == "view":
+        return render_selected_thread(selection.value, mode=mode)
+    if selection.action == "final":
+        return render_selected_thread(selection.value, mode="final")
+    if selection.action == "user":
+        return render_selected_thread(selection.value, mode="user")
+    if selection.action == "files":
+        return files_thread(
+            argparse.Namespace(selector=selection.value, mode=mode, json=False, open=False, editor=None)
+        )
+    print(f"Unknown picker action: {selection.action}", file=sys.stderr)
+    return 2
+
+
+def render_selected_thread(selector: str, *, mode: str) -> int:
+    return view_thread(
+        argparse.Namespace(selector=selector, mode=mode, phase=None, no_pager=False, no_color=False)
+    )
 
 
 def exec_resume(session_id: str) -> int:

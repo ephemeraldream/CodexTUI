@@ -32,9 +32,8 @@ CodexPlus v0.1 focuses on read-only local history and official session resume:
 - Fall back to scanning `~/.codex/sessions/**/*.jsonl`.
 - Render clean transcripts without system, developer, and tool noise by default.
 - Search across clean user and assistant messages.
-- Pick search matches through an optional fzf preview and resume flow.
+- Pick sessions and search matches through optional `fzf` previews with keyboard actions for resume, clean view, final answer, user turns, and file references.
 - List files mentioned in clean session history and optionally jump to one in `$EDITOR`.
-- Use `fzf` as an optional interactive browser.
 - Resume selected sessions through the official `codex resume` command.
 - Install an optional shell shim for `codex h`, `codex view`, and related helper commands.
 
@@ -67,11 +66,13 @@ python3 -m pip install -e .
 
 ## Usage
 
-Open the browser and resume a selected session:
+Open the terminal session picker and resume a selected session:
 
 ```bash
 cxp h
 ```
+
+Inside `fzf`, press Enter to resume, Ctrl-V to view clean history, Ctrl-F for the final answer, Ctrl-U for user turns, or Ctrl-O for files.
 
 List recent sessions:
 
