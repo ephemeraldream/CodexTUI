@@ -20,6 +20,21 @@ class CliTests(unittest.TestCase):
         )
         self.assertIn("CodexPlus 0.1.0", result.stdout)
 
+    def test_help_hides_internal_preview_commands(self) -> None:
+        env = dict(os.environ)
+        env["PYTHONPATH"] = "src"
+        result = subprocess.run(
+            [sys.executable, "-m", "codex_plus", "--help"],
+            cwd=os.getcwd(),
+            env=env,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        self.assertIn("files", result.stdout)
+        self.assertNotIn("==SUPPRESS==", result.stdout)
+        self.assertNotIn("file-preview", result.stdout)
+
     def test_compress_placeholder_is_explicitly_not_implemented(self) -> None:
         env = dict(os.environ)
         env["PYTHONPATH"] = "src"

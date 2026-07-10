@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -10,7 +11,8 @@ import tempfile
 from pathlib import Path
 
 from . import __version__
-from .fzf import choose_thread, is_available
+from .file_nav import FileHit, file_hits_for_thread, render_file_hits
+from .fzf import choose_file, choose_thread, is_available
 from .paths import real_codex_bin
 from .store import CodexStore
 from .transcript import filter_messages, format_ms, one_line, read_messages, render_thread, short_id, truncate
@@ -44,7 +46,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="CodexPlus, an unofficial local workbench for OpenAI Codex CLI sessions.",
     )
     parser.add_argument("--version", action="version", version=f"CodexPlus {__version__}")
-    sub = parser.add_subparsers(dest="command")
+    sub = parser.add_subparsers(
+        dest="command",
+        metavar="{browse,list,view,files,assistant,final,user,search,resume,path,stats,install-shim,compress}",
+    )
+
+    def add_hidden_parser(name: str) -> argparse.ArgumentParser:
+        hidden = sub.add_parser(name, help=argparse.SUPPRESS)
+        sub._choices_actions = [action for action in sub._choices_actions if action.dest != name]
+        return hidden
 
     def add_common_filters(p: argparse.ArgumentParser) -> None:
         p.add_argument("-a", "--all", action="store_true", help="include archived sessions")
@@ -70,6 +80,14 @@ def build_parser() -> argparse.ArgumentParser:
     view_p.add_argument("--no-pager", action="store_true", help="print directly instead of opening less")
     view_p.add_argument("--no-color", action="store_true", help="disable ANSI colors")
     view_p.set_defaults(func=view_thread)
+
+    files_p = sub.add_parser("files", aliases=["f"], help="list files mentioned in a session")
+    files_p.add_argument("selector", nargs="?", default="last", help="session id, prefix, title text, path, or last")
+    files_p.add_argument("--mode", choices=["chat", "assistant", "final", "user"], default="chat")
+    files_p.add_argument("--json", action="store_true", help="emit JSON lines")
+    files_p.add_argument("--open", action="store_true", help="pick a file with fzf when available and open it in EDITOR")
+    files_p.add_argument("--editor", help="editor command for --open, defaults to EDITOR or nvim/vim/vi")
+    files_p.set_defaults(func=files_thread)
 
     assistant_p = sub.add_parser("assistant", aliases=["answers"], help="show only Codex messages")
     assistant_p.add_argument("selector", nargs="?", default="last")
@@ -114,10 +132,15 @@ def build_parser() -> argparse.ArgumentParser:
     stats_p = sub.add_parser("stats", help="show session counts")
     stats_p.set_defaults(func=stats)
 
-    preview_p = sub.add_parser("preview", help=argparse.SUPPRESS)
+    preview_p = add_hidden_parser("preview")
     preview_p.add_argument("selector")
     preview_p.add_argument("--mode", choices=["chat", "assistant", "final", "user"], default="chat")
     preview_p.set_defaults(func=preview_thread)
+
+    file_preview_p = add_hidden_parser("file-preview")
+    file_preview_p.add_argument("path")
+    file_preview_p.add_argument("line", nargs="?")
+    file_preview_p.set_defaults(func=preview_file)
 
     install_p = sub.add_parser("install-shim", help="install an optional codex wrapper shim")
     install_p.add_argument("--target", default=str(Path.home() / ".local" / "bin" / "codex"), help="shim path")
@@ -214,6 +237,32 @@ def preview_thread(args: argparse.Namespace) -> int:
     return 0
 
 
+def files_thread(args: argparse.Namespace) -> int:
+    thread = CodexStore().resolve_thread(args.selector, include_archived=True)
+    hits = file_hits_for_thread(thread, mode=args.mode)
+    if args.json:
+        for hit in hits:
+            print(
+                json.dumps(
+                    {
+                        "path": hit.display_path,
+                        "resolved_path": hit.resolved_path,
+                        "line": hit.line,
+                        "role": hit.role,
+                        "count": hit.count,
+                        "exists": hit.exists,
+                        "context": hit.context,
+                    },
+                    ensure_ascii=False,
+                )
+            )
+        return 0
+    if args.open:
+        return open_file_from_hits(hits, editor=args.editor)
+    print(render_file_hits(hits), end="")
+    return 0
+
+
 def search_threads(args: argparse.Namespace) -> int:
     needle = args.text
     threads = CodexStore().load_threads(include_archived=args.all, limit=None, source=args.source, cwd=args.cwd)
@@ -279,6 +328,32 @@ def show_path(args: argparse.Namespace) -> int:
     return 0
 
 
+def preview_file(args: argparse.Namespace) -> int:
+    path = Path(args.path).expanduser()
+    line = parse_line(args.line)
+    if not path.is_file():
+        print(f"File not found: {path}")
+        return 1
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:
+        print(f"Unable to read {path}: {exc}")
+        return 1
+    if not lines:
+        print("(empty file)")
+        return 0
+    if line is None or line < 1:
+        start = 1
+        end = min(len(lines), 120)
+    else:
+        start = max(1, line - 8)
+        end = min(len(lines), line + 12)
+    for number in range(start, end + 1):
+        marker = ">" if line == number else " "
+        print(f"{number:>5} {marker} {lines[number - 1]}")
+    return 0
+
+
 def stats(_: argparse.Namespace) -> int:
     store = CodexStore()
     threads = store.load_threads(include_archived=True, limit=None)
@@ -319,7 +394,7 @@ case "${{1:-}}" in
     shift
     exec cxp list "$@"
     ;;
-  view|show|assistant|answers|final|user|questions|search|grep|stats|path)
+  view|show|assistant|answers|final|user|questions|search|grep|files|stats|path)
     exec cxp "$@"
     ;;
 esac
@@ -351,6 +426,56 @@ def page(output: str) -> None:
             os.unlink(temp_path)
         except OSError:
             pass
+
+
+def open_file_from_hits(hits: list[FileHit], *, editor: str | None) -> int:
+    if not hits:
+        print("No file references found.", file=sys.stderr)
+        return 1
+    hit = choose_file(hits) if is_available() else hits[0]
+    if hit is None:
+        return 0
+    return open_file(hit, editor=editor)
+
+
+def open_file(hit: FileHit, *, editor: str | None) -> int:
+    command = editor_command(editor or os.environ.get("EDITOR"), hit)
+    if command is None:
+        print(hit.resolved_path)
+        return 0
+    return subprocess.run(command, check=False).returncode
+
+
+def editor_command(editor: str | None, hit: FileHit) -> list[str] | None:
+    editor_parts = shlex.split(editor) if editor else default_editor_parts()
+    if not editor_parts:
+        return None
+    path = hit.resolved_path
+    line = hit.line
+    editor_name = Path(editor_parts[0]).name
+    if line is not None and editor_name in {"nvim", "vim", "vi"}:
+        return [*editor_parts, f"+{line}", path]
+    if line is not None and editor_name in {"code", "code-insiders", "codium"}:
+        return [*editor_parts, "-g", f"{path}:{line}"]
+    if line is not None and editor_name in {"emacs", "emacsclient"}:
+        return [*editor_parts, f"+{line}", path]
+    return [*editor_parts, path]
+
+
+def default_editor_parts() -> list[str] | None:
+    for candidate in ("nvim", "vim", "vi", "nano"):
+        if shutil.which(candidate):
+            return [candidate]
+    return None
+
+
+def parse_line(value: str | None) -> int | None:
+    if not value or value == "-":
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
 
 
 def snippet(text: str, needle: str, *, radius: int = 90) -> str:

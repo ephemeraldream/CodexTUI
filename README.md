@@ -18,6 +18,7 @@ cxp h
 cxp list
 cxp search "dividends"
 cxp view last
+cxp files last
 cxp assistant last
 cxp final 019f4bc1
 cxp resume 019f4bc1
@@ -31,6 +32,7 @@ CodexPlus v0.1 focuses on read-only local history and official session resume:
 - Fall back to scanning `~/.codex/sessions/**/*.jsonl`.
 - Render clean transcripts without system, developer, and tool noise by default.
 - Search across clean user and assistant messages.
+- List files mentioned in clean session history and optionally jump to one in `$EDITOR`.
 - Use `fzf` as an optional interactive browser.
 - Resume selected sessions through the official `codex resume` command.
 - Install an optional shell shim for `codex h`, `codex view`, and related helper commands.
@@ -88,6 +90,18 @@ Show only Codex messages from the latest session:
 cxp assistant last
 ```
 
+List files mentioned in the latest session:
+
+```bash
+cxp files last
+```
+
+Open a mentioned file through a keyboard picker when `fzf` is available:
+
+```bash
+cxp files last --open
+```
+
 Show the final answer from a session:
 
 ```bash
@@ -115,6 +129,7 @@ Examples:
 ```bash
 codex h
 codex search "dividends"
+codex files last
 codex view last
 codex "regular prompt still goes to official Codex"
 ```
