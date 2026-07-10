@@ -115,6 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
     search_p.add_argument("--mode", choices=["chat", "assistant", "final", "user"], default="chat")
     search_p.add_argument("--metadata-only", action="store_true", help="search only titles, previews, and cwd")
     search_p.add_argument("--open", action="store_true", help="pick a matching session with fzf and resume it")
+    search_p.add_argument("--json", action="store_true", help="emit JSON lines")
     search_p.add_argument("-a", "--all", action="store_true", help="include archived sessions")
     search_p.add_argument("-n", "--limit", type=int, default=40, help="maximum matches to print")
     search_p.add_argument("--source", choices=["cli", "vscode", "exec"], help="filter by source")
@@ -312,8 +313,12 @@ def search_threads(args: argparse.Namespace) -> int:
         if args.limit and len(matches) >= args.limit:
             break
     if not matches:
-        print("No matches.")
+        if not args.json:
+            print("No matches.")
         return 1
+    if args.json:
+        print_search_matches_json(matches, limit=args.limit, mode=args.mode)
+        return 0
     if args.open and is_available():
         selection = choose_search_match(matches[: args.limit or None], mode=args.mode)
         if not selection:
@@ -330,6 +335,28 @@ def print_search_matches(matches: list[SearchMatch], *, limit: int | None, mode:
         print(f"{short_id(thread.id)}  {match.role:9}  {truncate(title, 64)}")
         print(f"  {match.snippet}")
         print(f"  cxp view {thread.id} --mode {mode}")
+
+
+def print_search_matches_json(matches: list[SearchMatch], *, limit: int | None, mode: str) -> None:
+    for match in matches[: limit or None]:
+        thread = match.thread
+        print(
+            json.dumps(
+                {
+                    "id": thread.id,
+                    "title": thread.title or thread.first_user_message or thread.preview,
+                    "cwd": thread.cwd,
+                    "source": thread.source,
+                    "archived": thread.archived,
+                    "updated_at": format_ms(thread.recency_at_ms),
+                    "rollout_path": thread.rollout_path,
+                    "role": match.role,
+                    "snippet": match.snippet,
+                    "mode": mode,
+                },
+                ensure_ascii=False,
+            )
+        )
 
 
 def resume_thread(args: argparse.Namespace) -> int:

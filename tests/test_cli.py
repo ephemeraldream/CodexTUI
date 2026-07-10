@@ -109,6 +109,58 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("No matches.", result.stdout)
 
+    def test_search_json_outputs_clean_structured_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            session_dir = home / "sessions" / "2026" / "07" / "10"
+            session_dir.mkdir(parents=True)
+            target = session_dir / "rollout-2026-07-10T11-00-00-019f-test-files.jsonl"
+            target.write_text((FIXTURES / "rollout-files.jsonl").read_text(encoding="utf-8"), encoding="utf-8")
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_plus", "search", "src/app.py", "--json"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(len(rows), 2)
+        self.assertEqual({row["role"] for row in rows}, {"user", "assistant"})
+        self.assertEqual({row["id"] for row in rows}, {"019f-test-files"})
+        self.assertTrue(all(row["mode"] == "chat" for row in rows))
+        self.assertTrue(any(row["snippet"] == "Please inspect `src/app.py:7` and pyproject.toml." for row in rows))
+        self.assertFalse(any("hidden_tool_call.py" in row["snippet"] for row in rows))
+
+    def test_search_json_no_matches_has_no_plain_text_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            session_dir = home / "sessions" / "2026" / "07" / "10"
+            session_dir.mkdir(parents=True)
+            target = session_dir / "rollout-2026-07-10T11-00-00-019f-test-files.jsonl"
+            target.write_text((FIXTURES / "rollout-files.jsonl").read_text(encoding="utf-8"), encoding="utf-8")
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_plus", "search", "not-present", "--json"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+
     def test_search_ignores_autonomous_wrapper_boilerplate(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)

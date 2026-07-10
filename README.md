@@ -88,6 +88,12 @@ Search clean transcript text:
 cxp search "kibana"
 ```
 
+Emit structured search matches for scripts or terminal pipelines:
+
+```bash
+cxp search "kibana" --json
+```
+
 Scope session browsing or search to the current git workspace:
 
 ```bash
