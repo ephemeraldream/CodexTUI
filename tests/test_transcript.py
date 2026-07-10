@@ -65,6 +65,61 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual(messages[0].text, "Ship a keyboard-only CLI wrapper.")
         self.assertNotIn("This is iteration", messages[0].text)
 
+    def test_autonomous_status_updates_are_hidden_but_final_json_remains(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-status", "cwd": "/tmp/project", "source": "exec"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "event_msg",
+                    "payload": {"type": "user_message", "message": "Run the autonomous iteration", "images": []},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:02.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "agent_message",
+                        "phase": "commentary",
+                        "message": json.dumps(
+                            {
+                                "success": True,
+                                "summary": "checking notes",
+                                "key_changes_made": [],
+                                "key_learnings": [],
+                            }
+                        ),
+                    },
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:03.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "agent_message",
+                        "phase": "final_answer",
+                        "message": json.dumps(
+                            {
+                                "success": True,
+                                "summary": "completed iteration",
+                                "key_changes_made": ["hidden status updates"],
+                                "key_learnings": [],
+                            }
+                        ),
+                    },
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            messages = read_messages(path)
+
+        self.assertEqual([message.role for message in messages], ["user", "assistant"])
+        self.assertEqual(messages[1].phase, "final_answer")
+        self.assertNotIn("checking notes", "\n".join(message.text for message in messages))
+        self.assertIn("completed iteration", messages[1].text)
+
     def test_render_thread_includes_header_and_messages(self) -> None:
         thread = ThreadRow(
             id="019f-test-basic",

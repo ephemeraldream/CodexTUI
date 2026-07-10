@@ -32,6 +32,7 @@ CodexPlus v0.1 focuses on read-only local history and official session resume:
 - List Codex sessions from `~/.codex/state_*.sqlite`.
 - Fall back to scanning `~/.codex/sessions/**/*.jsonl`.
 - Render clean transcripts without system, developer, and tool noise by default.
+- Hide autonomous-run progress JSON from clean transcripts while keeping final structured answers visible.
 - Search across clean user and assistant messages.
 - Scope list, browse, resume, and search commands to the current git workspace with `--here`.
 - Scope single-session commands such as view, final, user, files, and path to the current git workspace with `--here`.
