@@ -200,9 +200,29 @@ def render_thread(
         if color:
             header = colorize_header(header, message.role, message.phase)
         lines.append(header)
-        lines.append(textwrap.indent(message.text.rstrip(), "  "))
+        lines.append(textwrap.indent(render_message_text(message), "  "))
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def render_message_text(message: ChatMessage) -> str:
+    text = message.text.rstrip()
+    if message.role == "assistant":
+        return pretty_json_text(text)
+    return text
+
+
+def pretty_json_text(text: str) -> str:
+    stripped = text.strip()
+    if not stripped or stripped[0] not in "{[":
+        return text
+    try:
+        value = json.loads(stripped)
+    except json.JSONDecodeError:
+        return text
+    if not isinstance(value, (dict, list)):
+        return text
+    return json.dumps(value, ensure_ascii=False, indent=2)
 
 
 def role_label(message: ChatMessage) -> str:
