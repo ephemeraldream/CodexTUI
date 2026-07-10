@@ -197,6 +197,37 @@ class CliTests(unittest.TestCase):
         self.assertIn("Ship a keyboard-only CLI wrapper.", objective_result.stdout)
         self.assertNotIn("This is iteration", objective_result.stdout)
 
+    def test_search_ignores_autonomous_status_updates_but_finds_final_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            write_autonomous_status_session(home)
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            status_result = subprocess.run(
+                [sys.executable, "-m", "codex_plus", "search", "checking notes"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            final_result = subprocess.run(
+                [sys.executable, "-m", "codex_plus", "search", "completed iteration"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(status_result.returncode, 1)
+        self.assertIn("No matches.", status_result.stdout)
+        self.assertEqual(final_result.returncode, 0)
+        self.assertIn("completed iteration", final_result.stdout)
+        self.assertNotIn("checking notes", final_result.stdout)
+
     def test_clean_cli_commands_hide_event_bootstrap_context(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
@@ -407,6 +438,58 @@ def write_cli_session(home: Path, session_id: str, *, cwd: str, user_message: st
             "timestamp": "2026-07-10T10:00:01.000Z",
             "type": "event_msg",
             "payload": {"type": "user_message", "message": user_message, "images": []},
+        },
+    ]
+    path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+    return path
+
+
+def write_autonomous_status_session(home: Path) -> Path:
+    session_dir = home / "sessions" / "2026" / "07" / "10"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    path = session_dir / "rollout-2026-07-10T10-00-00-019f-test-status.jsonl"
+    records = [
+        {
+            "timestamp": "2026-07-10T10:00:00.000Z",
+            "type": "session_meta",
+            "payload": {"id": "019f-test-status", "cwd": "/tmp/project", "source": "exec"},
+        },
+        {
+            "timestamp": "2026-07-10T10:00:01.000Z",
+            "type": "event_msg",
+            "payload": {"type": "user_message", "message": "Run the autonomous iteration", "images": []},
+        },
+        {
+            "timestamp": "2026-07-10T10:00:02.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "agent_message",
+                "phase": "commentary",
+                "message": json.dumps(
+                    {
+                        "success": True,
+                        "summary": "checking notes",
+                        "key_changes_made": [],
+                        "key_learnings": [],
+                    }
+                ),
+            },
+        },
+        {
+            "timestamp": "2026-07-10T10:00:03.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "agent_message",
+                "phase": "final_answer",
+                "message": json.dumps(
+                    {
+                        "success": True,
+                        "summary": "completed iteration",
+                        "key_changes_made": ["hidden status updates"],
+                        "key_learnings": [],
+                    }
+                ),
+            },
         },
     ]
     path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")

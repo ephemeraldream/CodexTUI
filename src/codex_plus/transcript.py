@@ -10,6 +10,9 @@ from typing import Iterable
 from .models import ChatMessage, ThreadRow
 
 
+AUTONOMOUS_STATUS_KEYS = {"success", "summary", "key_changes_made", "key_learnings"}
+
+
 def read_messages(path: Path) -> list[ChatMessage]:
     event_messages: list[ChatMessage] = []
     fallback_user: list[ChatMessage] = []
@@ -38,7 +41,8 @@ def read_messages(path: Path) -> list[ChatMessage]:
                     text = text_from_payload(payload)
                     if text:
                         phase = str(payload.get("phase") or "")
-                        event_messages.append(ChatMessage(timestamp, "assistant", phase, text))
+                        if not looks_like_autonomous_status_update(text, phase):
+                            event_messages.append(ChatMessage(timestamp, "assistant", phase, text))
                 elif payload_type == "task_complete":
                     text = str(payload.get("last_agent_message") or "")
                     if text:
@@ -50,7 +54,8 @@ def read_messages(path: Path) -> list[ChatMessage]:
                     continue
                 phase = str(payload.get("phase") or "")
                 if role == "assistant":
-                    fallback_assistant.append(ChatMessage(timestamp, "assistant", phase, text))
+                    if not looks_like_autonomous_status_update(text, phase):
+                        fallback_assistant.append(ChatMessage(timestamp, "assistant", phase, text))
                 elif role == "user" and not looks_like_bootstrap_context(text):
                     fallback_user.append(ChatMessage(timestamp, "user", phase, clean_user_text(text)))
     has_event_assistant = any(message.role == "assistant" for message in event_messages)
@@ -98,6 +103,19 @@ def text_from_payload(payload: dict[str, object]) -> str:
 def looks_like_bootstrap_context(text: str) -> bool:
     stripped = text.lstrip()
     return stripped.startswith("# AGENTS.md instructions") or "<environment_context>" in stripped
+
+
+def looks_like_autonomous_status_update(text: str, phase: str) -> bool:
+    if phase == "final_answer":
+        return False
+    stripped = text.strip()
+    if not stripped.startswith("{"):
+        return False
+    try:
+        value = json.loads(stripped)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(value, dict) and AUTONOMOUS_STATUS_KEYS.issubset(value)
 
 
 def clean_user_text(text: str) -> str:
