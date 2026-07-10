@@ -48,9 +48,6 @@ class CodexStore:
         if source:
             clauses.append("source = ?")
             params.append(source)
-        if cwd:
-            clauses.append("cwd LIKE ?")
-            params.append(f"%{cwd}%")
         if query:
             like = f"%{query}%"
             clauses.append("(title LIKE ? OR preview LIKE ? OR first_user_message LIKE ? OR cwd LIKE ? OR id LIKE ?)")
@@ -63,7 +60,8 @@ class CodexStore:
             {where}
             ORDER BY recency_at_ms DESC, id DESC
         """
-        if limit is not None:
+        needs_python_filter = bool(query or cwd)
+        if limit is not None and not needs_python_filter:
             sql += " LIMIT ?"
             params.append(limit)
         try:
@@ -86,12 +84,14 @@ class CodexStore:
             )
             for row in rows
         ]
-        if query:
+        if needs_python_filter:
             threads = [
                 thread
                 for thread in threads
-                if thread_matches_filters(thread, query=query, source=None, cwd=None)
+                if thread_matches_filters(thread, query=query, source=None, cwd=cwd)
             ]
+        if limit is not None and needs_python_filter:
+            threads = threads[:limit]
         return threads
 
     def resolve_thread(
@@ -275,11 +275,19 @@ def thread_matches_filters(
 def cwd_matches_filter(thread_cwd: str, cwd_filter: str) -> bool:
     if not thread_cwd:
         return False
-    if cwd_filter.casefold() in thread_cwd.casefold():
-        return True
     try:
         thread_path = Path(thread_cwd).expanduser().resolve(strict=False)
         filter_path = Path(cwd_filter).expanduser().resolve(strict=False)
     except OSError:
+        thread_path = None
+        filter_path = None
+    if thread_path is not None and filter_path is not None:
+        if thread_path == filter_path or filter_path in thread_path.parents:
+            return True
+    if looks_like_path_filter(cwd_filter):
         return False
-    return thread_path == filter_path or filter_path in thread_path.parents
+    return cwd_filter.casefold() in thread_cwd.casefold()
+
+
+def looks_like_path_filter(value: str) -> bool:
+    return value in {".", ".."} or value.startswith(("~", "/", "./", "../")) or "/" in value or "\\" in value
