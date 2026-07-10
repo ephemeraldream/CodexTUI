@@ -140,6 +140,46 @@ class TranscriptTests(unittest.TestCase):
         self.assertIn("The bug is fixed.", rendered)
         self.assertNotIn("Find the bug\n\n[", rendered)
 
+    def test_render_thread_pretty_prints_assistant_json_answers(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-json", "cwd": "/tmp/project", "source": "exec"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "agent_message",
+                        "phase": "final_answer",
+                        "message": '{"success":true,"key_changes_made":["clean JSON rendering"]}',
+                    },
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            thread = ThreadRow(
+                id="019f-test-json",
+                title="Structured result",
+                cwd="/tmp/project",
+                source="exec",
+                archived=False,
+                rollout_path=str(path),
+                created_at_ms=1783677600000,
+                updated_at_ms=1783677605000,
+                recency_at_ms=1783677605000,
+                preview="",
+                first_user_message="",
+            )
+
+            rendered = render_thread(thread, mode="final")
+
+        self.assertIn('  "success": true', rendered)
+        self.assertIn('  "key_changes_made": [', rendered)
+        self.assertNotIn('{"success":true,"key_changes_made"', rendered)
+
 
 def autonomous_prompt(objective: str) -> str:
     return (
