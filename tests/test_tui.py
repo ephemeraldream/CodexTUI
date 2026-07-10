@@ -8,7 +8,7 @@ from unittest.mock import patch
 import path_bootstrap  # noqa: F401
 
 from codex_plus.models import ThreadRow
-from codex_plus.tui import CursesStreamWriter, TuiApp, stream_selected_thread, visible_lines, wrap_lines
+from codex_plus.tui import CursesStreamWriter, TuiApp, stream_new_prompt, stream_selected_thread, visible_lines, wrap_lines
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -48,6 +48,35 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(result, 0)
         stream_mock.assert_called_once_with(
             ["/tmp/codex", "exec", "resume", "--json", "019f-test-tui", "Continue"],
+            raw_json=False,
+            stdout=output,
+            stderr_to_stdout=True,
+        )
+
+    @patch("codex_plus.tui.run_codex_json_stream")
+    def test_stream_new_prompt_uses_codexplus_json_exec(self, stream_mock) -> None:
+        stream_mock.return_value = 0
+
+        with patch("codex_plus.tui.real_codex_bin", return_value=Path("/tmp/codex")):
+            result = stream_new_prompt("Start a new task")
+
+        self.assertEqual(result, 0)
+        stream_mock.assert_called_once_with(
+            ["/tmp/codex", "exec", "--json", "Start a new task"],
+            raw_json=False,
+        )
+
+    @patch("codex_plus.tui.run_codex_json_stream")
+    def test_stream_new_prompt_routes_output_back_to_tui(self, stream_mock) -> None:
+        stream_mock.return_value = 0
+        output = StringIO()
+
+        with patch("codex_plus.tui.real_codex_bin", return_value=Path("/tmp/codex")):
+            result = stream_new_prompt("Start a new task", stdout=output)
+
+        self.assertEqual(result, 0)
+        stream_mock.assert_called_once_with(
+            ["/tmp/codex", "exec", "--json", "Start a new task"],
             raw_json=False,
             stdout=output,
             stderr_to_stdout=True,
@@ -207,6 +236,37 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app.threads, threads)
         self.assertEqual(app.status, "Refresh found no sessions; keeping current list.")
 
+    def test_new_prompt_streams_inside_tui_and_refreshes_sessions(self) -> None:
+        prompts: list[str] = []
+        refreshed = [sample_thread("019f-test-new"), sample_thread("019f-test-old")]
+
+        def new_runner(prompt: str, stdout: StringIO) -> int:
+            prompts.append(prompt)
+            stdout.write("new answer\n")
+            return 0
+
+        app = TuiApp(
+            [sample_thread("019f-test-old")],
+            lambda _thread, _prompt, _stdout: 0,
+            new_stream_runner=new_runner,
+            thread_loader=lambda: refreshed,
+        )
+        app.read_prompt = lambda _label: "Start fresh"  # type: ignore[method-assign]
+        app.draw_stream = lambda _current_line=None: None  # type: ignore[method-assign]
+        app.review_stream = lambda: None  # type: ignore[method-assign]
+        app.stdscr = FakeScreen()
+
+        app.ask_new()
+
+        self.assertEqual(prompts, ["Start fresh"])
+        self.assertEqual(app.stream_lines[0], "CodexPlus streaming a new prompt via codex exec --json")
+        self.assertEqual(app.stream_command_label, "codex exec --json")
+        self.assertIn("new answer", app.stream_lines)
+        self.assertEqual(app.threads, refreshed)
+        self.assertEqual(app.selected, 0)
+        self.assertEqual(app.top, 0)
+        self.assertEqual(app.status, "Stream finished; refreshed 2 sessions.")
+
 
 def sample_thread(thread_id: str = "019f-test-tui") -> ThreadRow:
     return ThreadRow(
@@ -222,6 +282,11 @@ def sample_thread(thread_id: str = "019f-test-tui") -> ThreadRow:
         preview="",
         first_user_message="Build a TUI",
     )
+
+
+class FakeScreen:
+    def clear(self) -> None:
+        return None
 
 
 if __name__ == "__main__":

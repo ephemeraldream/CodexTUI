@@ -20,6 +20,7 @@ class StreamOutput(Protocol):
 
 
 StreamRunner = Callable[[ThreadRow, str, StreamOutput], int]
+NewStreamRunner = Callable[[str, StreamOutput], int]
 ThreadLoader = Callable[[], list[ThreadRow]]
 
 
@@ -27,16 +28,18 @@ ThreadLoader = Callable[[], list[ThreadRow]]
 class TuiApp:
     threads: list[ThreadRow]
     stream_runner: StreamRunner
+    new_stream_runner: NewStreamRunner | None = None
     thread_loader: ThreadLoader | None = None
     mode: str = "chat"
     selected: int = 0
     top: int = 0
     focus: str = "sessions"
     preview_top: int = 0
-    status: str = "Enter asks CodexPlus to continue the selected session through JSON streaming."
+    status: str = "Enter continues the selected session; n starts a new CodexPlus JSON stream."
     preview_cache: dict[tuple[str, str], list[str]] = field(default_factory=dict)
     stream_lines: list[str] = field(default_factory=list)
     stream_top: int | None = None
+    stream_command_label: str = "codex exec resume --json"
 
     def run(self, stdscr: object) -> int:
         import curses
@@ -74,6 +77,8 @@ class TuiApp:
                 self.set_mode("files")
             elif key in (ord("r"),):
                 self.refresh_threads()
+            elif key in (ord("n"),):
+                self.ask_new()
             elif key in (10, 13, curses.KEY_ENTER):
                 self.ask_selected()
 
@@ -151,7 +156,7 @@ class TuiApp:
         self.draw_sessions(list_width, body_height)
         self.draw_preview(preview_x, 2, preview_width, body_height - 1)
 
-        help_text = "tab focus | arrows move/scroll | enter ask+stream | r refresh | v/a/f/u/o modes | q quit"
+        help_text = "tab focus | arrows move/scroll | enter resume | n new | r refresh | v/a/f/u/o modes | q quit"
         add_text(stdscr, height - 2, 0, help_text, width, curses.A_REVERSE)
         add_text(stdscr, height - 1, 0, self.status, width)
         stdscr.refresh()
@@ -201,22 +206,59 @@ class TuiApp:
             self.status = "Ask cancelled."
             return
         thread = self.selected_thread()
+        self.stream_prompt(
+            title=f"CodexPlus streaming {short_id(thread.id)} via codex exec resume --json",
+            command_label="codex exec resume --json",
+            runner=lambda stdout: self.stream_runner(thread, prompt, stdout),
+        )
+        self.preview_cache.clear()
+        self.stdscr.clear()
+
+    def ask_new(self) -> None:
+        if self.new_stream_runner is None:
+            self.status = "New prompt streaming is unavailable."
+            return
+        prompt = self.read_prompt("New Codex prompt")
+        if not prompt:
+            self.status = "New prompt cancelled."
+            return
+        code = self.stream_prompt(
+            title="CodexPlus streaming a new prompt via codex exec --json",
+            command_label="codex exec --json",
+            runner=lambda stdout: self.new_stream_runner(prompt, stdout),
+        )
+        self.refresh_after_new_stream(code)
+        self.stdscr.clear()
+
+    def stream_prompt(self, *, title: str, command_label: str, runner: Callable[[StreamOutput], int]) -> int:
         self.stream_top = None
-        self.stream_lines = [
-            f"CodexPlus streaming {short_id(thread.id)} via codex exec resume --json",
-            "",
-        ]
+        self.stream_command_label = command_label
+        self.stream_lines = [title, ""]
         self.status = "Streaming response inside CodexPlus TUI."
         self.draw_stream()
         writer = CursesStreamWriter(self)
-        code = self.stream_runner(thread, prompt, writer)
+        code = runner(writer)
         writer.close_line()
-        self.preview_cache.clear()
         self.status = "Stream finished." if code == 0 else f"Stream exited with status {code}."
         self.stream_lines.extend(["", f"{self.status} Arrows/PageUp/PageDown scroll, Enter/q returns."])
         self.draw_stream()
         self.review_stream()
-        self.stdscr.clear()
+        return code
+
+    def refresh_after_new_stream(self, code: int) -> None:
+        self.preview_cache.clear()
+        completion = "Stream finished" if code == 0 else f"Stream exited with status {code}"
+        if self.thread_loader is None:
+            return
+        refreshed = self.thread_loader()
+        if not refreshed:
+            self.status = f"{completion}; refresh found no sessions."
+            return
+        self.threads = refreshed
+        self.selected = 0
+        self.top = 0
+        self.preview_top = 0
+        self.status = f"{completion}; refreshed {len(self.threads)} sessions."
 
     def append_stream_line(self, line: str) -> None:
         self.stream_lines.append(line.rstrip("\n"))
@@ -239,7 +281,7 @@ class TuiApp:
             stdscr,
             height - 2,
             0,
-            "codex exec resume --json | output captured by CodexPlus | scroll after finish",
+            f"{self.stream_command_label} | output captured by CodexPlus | scroll after finish",
             width,
             curses.A_REVERSE,
         )
@@ -336,7 +378,10 @@ def run_tui(
     def runner(thread: ThreadRow, prompt: str, stdout: StreamOutput) -> int:
         return stream_selected_thread(thread, prompt, raw_json=raw_json, stdout=stdout)
 
-    return run_curses_app(TuiApp(threads, runner, thread_loader=load_threads))
+    def new_runner(prompt: str, stdout: StreamOutput) -> int:
+        return stream_new_prompt(prompt, raw_json=raw_json, stdout=stdout)
+
+    return run_curses_app(TuiApp(threads, runner, new_stream_runner=new_runner, thread_loader=load_threads))
 
 
 def run_curses_app(app: TuiApp) -> int:
@@ -354,6 +399,20 @@ def stream_selected_thread(
     stdout: TextIO | None = None,
 ) -> int:
     command = codex_exec_command(real_codex_bin(), prompt=prompt, resume_id=thread.id)
+    kwargs: dict[str, object] = {"raw_json": raw_json}
+    if stdout is not None:
+        kwargs["stdout"] = stdout
+        kwargs["stderr_to_stdout"] = True
+    return run_codex_json_stream(command, **kwargs)
+
+
+def stream_new_prompt(
+    prompt: str,
+    *,
+    raw_json: bool = False,
+    stdout: TextIO | None = None,
+) -> int:
+    command = codex_exec_command(real_codex_bin(), prompt=prompt, resume_id=None)
     kwargs: dict[str, object] = {"raw_json": raw_json}
     if stdout is not None:
         kwargs["stdout"] = stdout
