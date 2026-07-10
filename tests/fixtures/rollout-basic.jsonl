@@ -1,0 +1,6 @@
+{"timestamp":"2026-07-10T10:00:00.000Z","type":"session_meta","payload":{"id":"019f-test-basic","cwd":"/tmp/project","source":"cli"}}
+{"timestamp":"2026-07-10T10:00:01.000Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"developer context should stay hidden"}]}}
+{"timestamp":"2026-07-10T10:00:02.000Z","type":"event_msg","payload":{"type":"user_message","message":"Find the bug","images":[]}}
+{"timestamp":"2026-07-10T10:00:03.000Z","type":"event_msg","payload":{"type":"agent_message","phase":"commentary","message":"I will inspect the failing path."}}
+{"timestamp":"2026-07-10T10:00:04.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"pytest\"}","call_id":"call_1"}}
+{"timestamp":"2026-07-10T10:00:05.000Z","type":"event_msg","payload":{"type":"agent_message","phase":"final_answer","message":"The bug is fixed."}}
