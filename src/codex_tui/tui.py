@@ -703,10 +703,20 @@ def line_attr(line: str, theme: TuiTheme) -> int:
 def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
     result: list[tuple[str, int]] = []
     in_code_block = False
+    in_tool_output = False
     for line in lines:
         stripped = line.strip()
         fence = is_code_fence(stripped)
+        starts_tool_output = stripped.startswith("[tool output]")
+        starts_new_block = is_activity_header(stripped) or is_any_role_header(stripped)
+        if starts_new_block and not starts_tool_output:
+            in_tool_output = False
         if in_code_block or fence:
+            attr = theme.code
+        elif starts_tool_output:
+            attr = line_attr(line, theme)
+            in_tool_output = True
+        elif in_tool_output:
             attr = theme.code
         else:
             attr = line_attr(line, theme)
@@ -718,6 +728,31 @@ def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
 
 def is_code_fence(line: str) -> bool:
     return line.startswith(("```", "~~~"))
+
+
+def is_activity_header(line: str) -> bool:
+    return line.startswith(
+        (
+            "[tool]",
+            "[tool output]",
+            "[search]",
+            "[plan]",
+            "[task]",
+            "[tokens]",
+            "[context]",
+            "[reasoning]",
+            "[thread]",
+            "[item]",
+        )
+    )
+
+
+def is_any_role_header(line: str) -> bool:
+    return (
+        is_role_header(line, "YOU")
+        or is_role_header(line, "CODEX final")
+        or is_role_header(line, "CODEX")
+    )
 
 
 def status_line_attr(status: str, theme: TuiTheme) -> int:

@@ -174,6 +174,29 @@ class TuiTests(unittest.TestCase):
             ],
         )
 
+    def test_styled_lines_styles_tool_output_body_until_next_block(self) -> None:
+        theme = TuiTheme(code=70, status_muted=40, tool_header=60)
+
+        rows = styled_lines(
+            [
+                "[tool output] exec_command",
+                "2 failed, 1 passed",
+                "see tests/test_app.py",
+                "[task] Stream finished.",
+            ],
+            theme,
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                ("[tool output] exec_command", 60),
+                ("2 failed, 1 passed", 70),
+                ("see tests/test_app.py", 70),
+                ("[task] Stream finished.", 40),
+            ],
+        )
+
     def test_draw_preview_styles_code_body_when_scrolled_inside_block(self) -> None:
         app = TuiApp(
             [sample_thread()],
@@ -208,6 +231,19 @@ class TuiTests(unittest.TestCase):
         rows = app.visible_stream_rows(None, width=80, height=1)
 
         self.assertEqual(rows, [("print('hi')", 70)])
+
+    def test_visible_stream_rows_styles_tool_output_body_when_scrolled_inside_block(self) -> None:
+        app = TuiApp(
+            [sample_thread()],
+            lambda _thread, _prompt, _stdout: 0,
+            theme=TuiTheme(code=70, tool_header=60),
+        )
+        app.stream_lines = ["[tool output] exec_command", "2 failed, 1 passed", "[tool] apply_patch"]
+        app.stream_top = 1
+
+        rows = app.visible_stream_rows(None, width=80, height=1)
+
+        self.assertEqual(rows, [("2 failed, 1 passed", 70)])
 
     def test_status_line_attr_marks_failures_prominently(self) -> None:
         theme = TuiTheme(status_muted=4, status_error=8)
