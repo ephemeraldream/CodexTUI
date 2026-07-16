@@ -726,6 +726,7 @@ def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
     in_tool_output = False
     in_error_activity = False
     current_role_body = 0
+    current_role_header = 0
     for line in lines:
         stripped = line.strip()
         fence = is_code_fence(stripped)
@@ -735,12 +736,15 @@ def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
         role_body_attr = role_body_attr_for_header(stripped, theme) if detect_blocks else None
         starts_role_block = role_body_attr is not None
         starts_new_block = (detect_blocks and is_activity_header(stripped)) or starts_role_block
+        markdown_attr = markdown_structure_attr(stripped, current_role_header, theme)
         if starts_new_block and not starts_tool_output:
             in_tool_output = False
         if starts_new_block and not starts_error_activity:
             in_error_activity = False
         if starts_new_block:
             current_role_body = role_body_attr or 0
+            current_role_header = line_attr(line, theme) if starts_role_block else 0
+            markdown_attr = 0
         if not stripped:
             in_error_activity = False
         if in_code_block or fence:
@@ -760,6 +764,8 @@ def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
             attr = theme.code
         elif in_error_activity:
             attr = theme.status_error
+        elif markdown_attr:
+            attr = markdown_attr
         elif current_role_body:
             attr = current_role_body
         else:
@@ -772,6 +778,33 @@ def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
 
 def is_code_fence(line: str) -> bool:
     return line.startswith(("```", "~~~"))
+
+
+def markdown_structure_attr(line: str, current_role_header: int, theme: TuiTheme) -> int:
+    if not current_role_header:
+        return 0
+    if is_markdown_heading(line):
+        return current_role_header
+    if is_markdown_quote(line):
+        return theme.status_muted
+    if is_markdown_rule(line):
+        return theme.divider
+    return 0
+
+
+def is_markdown_heading(line: str) -> bool:
+    marker = line.split(" ", 1)[0]
+    return 1 <= len(marker) <= 6 and set(marker) == {"#"} and line.startswith(f"{marker} ")
+
+
+def is_markdown_quote(line: str) -> bool:
+    return line == ">" or line.startswith("> ")
+
+
+def is_markdown_rule(line: str) -> bool:
+    if len(line) < 3:
+        return False
+    return set(line) <= {"-"} or set(line) <= {"*"} or set(line) <= {"_"}
 
 
 def is_activity_header(line: str) -> bool:

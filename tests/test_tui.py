@@ -276,6 +276,54 @@ class TuiTests(unittest.TestCase):
             ],
         )
 
+    def test_styled_lines_styles_markdown_structure_inside_role_blocks(self) -> None:
+        theme = TuiTheme(
+            assistant_final_header=30,
+            assistant_final_body=31,
+            status_muted=40,
+            divider=45,
+            code=70,
+        )
+
+        rows = styled_lines(
+            [
+                "CODEX final",
+                "  ## Result",
+                "  Normal paragraph.",
+                "  > Quoted detail.",
+                "  ---",
+                "  - List item.",
+                "  ```markdown",
+                "  ## Literal heading",
+                "  ```",
+                "  After code.",
+            ],
+            theme,
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                ("CODEX final", 30),
+                ("  ## Result", 30),
+                ("  Normal paragraph.", 31),
+                ("  > Quoted detail.", 40),
+                ("  ---", 45),
+                ("  - List item.", 31),
+                ("  ```markdown", 70),
+                ("  ## Literal heading", 70),
+                ("  ```", 70),
+                ("  After code.", 31),
+            ],
+        )
+
+    def test_styled_lines_styles_markdown_heading_with_plain_role_body(self) -> None:
+        theme = TuiTheme(assistant_header=20)
+
+        rows = styled_lines(["CODEX", "  ## Result", "  Body text."], theme)
+
+        self.assertEqual(rows, [("CODEX", 20), ("  ## Result", 20), ("  Body text.", 0)])
+
     def test_draw_preview_styles_code_body_when_scrolled_inside_block(self) -> None:
         app = TuiApp(
             [sample_thread()],
