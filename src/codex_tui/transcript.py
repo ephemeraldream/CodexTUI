@@ -181,18 +181,23 @@ def render_thread(
     phases: set[str] | None = None,
     color: bool = False,
     width: int | None = None,
+    include_metadata: bool = True,
 ) -> str:
     path = Path(thread.rollout_path)
     messages = filter_messages(read_messages(path), mode, phases)
-    lines = [
-        f"Codex session: {short_id(thread.id)}",
-        f"Title: {truncate(thread.title or thread.first_user_message, 220) or '(untitled)'}",
-        f"Updated: {format_ms(thread.recency_at_ms)}",
-        f"Source: {thread.source or '?'}",
-        f"CWD: {thread.cwd or '?'}",
-        f"File: {thread.rollout_path}",
-        "",
-    ]
+    lines: list[str] = []
+    if include_metadata:
+        lines.extend(
+            [
+                f"Codex session: {short_id(thread.id)}",
+                f"Title: {truncate(thread.title or thread.first_user_message, 220) or '(untitled)'}",
+                f"Updated: {format_ms(thread.recency_at_ms)}",
+                f"Source: {thread.source or '?'}",
+                f"CWD: {thread.cwd or '?'}",
+                f"File: {thread.rollout_path}",
+                "",
+            ]
+        )
     if not messages:
         lines.append("(No chat messages found in this session.)")
         return "\n".join(lines)

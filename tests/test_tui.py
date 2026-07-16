@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from io import StringIO
+import json
+import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -416,6 +418,61 @@ class TuiTests(unittest.TestCase):
         self.assertIn("tests/test_app.py", lines)
         self.assertIn("pyproject.toml", lines)
         self.assertNotIn("src/hidden_tool_call.py", lines)
+
+    def test_tui_chat_preview_starts_at_conversation_without_metadata_block(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-conversation", "cwd": "/tmp/project", "source": "cli"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "user_message",
+                        "message": "Inspect the transcript",
+                        "images": [],
+                    },
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:02.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "agent_message",
+                        "phase": "final_answer",
+                        "message": "The preview starts with chat.",
+                    },
+                },
+            ]
+            path.write_text(
+                "\n".join(json.dumps(record) for record in records) + "\n",
+                encoding="utf-8",
+            )
+            thread = ThreadRow(
+                id="019f-test-conversation",
+                title="Conversation first",
+                cwd="/tmp/project",
+                source="cli",
+                archived=False,
+                rollout_path=str(path),
+                created_at_ms=1783677600000,
+                updated_at_ms=1783677605000,
+                recency_at_ms=1783677605000,
+                preview="",
+                first_user_message="Inspect the transcript",
+            )
+
+            app = TuiApp([thread], lambda _thread, _prompt, _stdout: 0)
+            lines = app.preview_lines(thread, width=80)
+
+        rendered = "\n".join(lines)
+        self.assertTrue(lines[0].endswith("  YOU"))
+        self.assertIn("Inspect the transcript", rendered)
+        self.assertNotIn("Codex session:", rendered)
+        self.assertNotIn("File:", rendered)
 
     def test_preview_cache_tracks_terminal_width(self) -> None:
         thread = sample_thread("019f-test-width")

@@ -248,7 +248,13 @@ class TuiApp:
             if self.mode == "files":
                 text = render_file_hits(file_hits_for_thread(thread))
             else:
-                text = render_thread(thread, mode=self.mode, color=False, width=width)
+                text = render_thread(
+                    thread,
+                    mode=self.mode,
+                    color=False,
+                    width=width,
+                    include_metadata=False,
+                )
             self.preview_cache[key] = text.splitlines()
         return self.preview_cache[key]
 
