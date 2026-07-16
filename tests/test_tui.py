@@ -141,6 +141,8 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(line_attr("[2] 2026-07-17 10:00:01  CODEX", theme), 20)
         self.assertEqual(line_attr("[3] 2026-07-17 10:00:02  CODEX final", theme), 30)
         self.assertEqual(line_attr("YOU", theme), 10)
+        self.assertEqual(line_attr("CODEX", theme), 20)
+        self.assertEqual(line_attr("CODEX final", theme), 30)
         self.assertEqual(line_attr("YOU 10:00", theme), 10)
         self.assertEqual(line_attr("CODEX 10:01", theme), 20)
         self.assertEqual(line_attr("CODEX final 10:02", theme), 30)

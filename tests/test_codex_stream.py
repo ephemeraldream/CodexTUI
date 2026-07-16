@@ -13,10 +13,10 @@ class CodexStreamTests(unittest.TestCase):
     def test_event_agent_message_renders_as_stream_text(self) -> None:
         line = json_line(
             "event_msg",
-            {"type": "agent_message", "phase": "commentary", "message": "I am checking the repo."},
+            {"type": "agent_message", "phase": "commentary", "message": "I am checking the repo.\nNext step."},
         )
 
-        self.assertEqual(text_from_json_line(line), "I am checking the repo.")
+        self.assertEqual(text_from_json_line(line), "CODEX\n  I am checking the repo.\n  Next step.")
 
     def test_response_item_assistant_message_is_fallback_stream_text(self) -> None:
         line = json_line(
@@ -28,7 +28,7 @@ class CodexStreamTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(text_from_json_line(line), "Fallback answer.")
+        self.assertEqual(text_from_json_line(line), "CODEX\n  Fallback answer.")
 
     def test_renderer_suppresses_duplicate_high_level_and_response_messages(self) -> None:
         event_line = json_line(
@@ -47,7 +47,7 @@ class CodexStreamTests(unittest.TestCase):
         task_complete_line = json_line("event_msg", {"type": "task_complete", "last_agent_message": "Done."})
         renderer = CodexStreamRenderer()
 
-        self.assertEqual(renderer.render_line(event_line), "Done.")
+        self.assertEqual(renderer.render_line(event_line), "CODEX final\n  Done.")
         self.assertIsNone(renderer.render_line(response_line))
         self.assertIsNone(renderer.render_line(task_complete_line))
 
@@ -79,7 +79,7 @@ class CodexStreamTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(text_from_json_line(line), "Ок, ничего не делаю.")
+        self.assertEqual(text_from_json_line(line), "CODEX\n  Ок, ничего не делаю.")
 
     def test_renderer_streams_top_level_turn_usage(self) -> None:
         line = json.dumps(
