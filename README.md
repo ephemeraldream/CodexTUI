@@ -551,6 +551,16 @@ CodexTUI is designed around these boundaries:
 
 ## Development
 
+Read `AGENTS.md` before making repository changes.
+The renderer roadmap lives in `docs/renderer-plan.md`.
+User-facing release history lives in `CHANGELOG.md`.
+
+Refresh the ignored local context harness before substantial work.
+
+```bash
+scripts/dev-context-harness.sh snapshot
+```
+
 Run tests with the standard library test runner.
 
 ```bash
