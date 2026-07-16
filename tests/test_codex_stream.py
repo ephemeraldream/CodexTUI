@@ -6,7 +6,7 @@ from pathlib import Path
 
 import path_bootstrap  # noqa: F401
 
-from codex_plus.codex_stream import CodexStreamRenderer, codex_exec_command, text_from_json_line
+from codex_tui.codex_stream import CodexStreamRenderer, codex_exec_command, text_from_json_line
 
 
 class CodexStreamTests(unittest.TestCase):
@@ -219,12 +219,12 @@ class CodexStreamTests(unittest.TestCase):
                     "## Instructions\n\n"
                     "1. Read notes first.\n\n"
                     "## Objective\n\n"
-                    "Build a CodexPlus-owned TUI."
+                    "Build a CodexTUI-owned TUI."
                 ),
             },
         )
 
-        self.assertEqual(text_from_json_line(line), "[user] Build a CodexPlus-owned TUI.")
+        self.assertEqual(text_from_json_line(line), "[user] Build a CodexTUI-owned TUI.")
 
     def test_renderer_suppresses_bootstrap_user_message_events(self) -> None:
         line = json_line(

@@ -48,7 +48,7 @@ def choose_thread(
         "2..",
         "--no-sort",
         "--prompt",
-        "cxp sessions> ",
+        "ctui sessions> ",
         "--header",
         session_header(allow_actions),
         "--preview",
@@ -79,7 +79,7 @@ def choose_file(hits: list[FileHit]) -> FileHit | None:
             "3..",
             "--no-sort",
             "--prompt",
-            "cxp files> ",
+            "ctui files> ",
             "--header",
             "enter opens selected file, preview shows the target area, use / to search, esc cancels",
             "--preview",
@@ -110,7 +110,7 @@ def choose_search_match(matches: list[SearchMatch], *, mode: str = "chat") -> Pi
             "2..",
             "--no-sort",
             "--prompt",
-            "cxp search> ",
+            "ctui search> ",
             "--header",
             action_header("selected match", search_word="refine"),
             "--preview",
@@ -158,12 +158,12 @@ def action_header(target: str, *, search_word: str) -> str:
 
 def preview_command(mode: str) -> str:
     executable = shlex.quote(sys.executable)
-    return f"{executable} -m codex_plus preview {{1}} --mode {shlex.quote(mode)}"
+    return f"{executable} -m codex_tui preview {{1}} --mode {shlex.quote(mode)}"
 
 
 def file_preview_command() -> str:
     executable = shlex.quote(sys.executable)
-    return f"{executable} -m codex_plus file-preview {{1}} {{2}}"
+    return f"{executable} -m codex_tui file-preview {{1}} {{2}}"
 
 
 def row_for_thread(thread: ThreadRow) -> str:

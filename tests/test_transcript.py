@@ -7,8 +7,8 @@ from pathlib import Path
 
 import path_bootstrap  # noqa: F401
 
-from codex_plus.models import ThreadRow
-from codex_plus.transcript import filter_messages, read_messages, render_thread
+from codex_tui.models import ThreadRow
+from codex_tui.transcript import filter_messages, read_messages, render_thread
 
 
 FIXTURES = Path(__file__).parent / "fixtures"

@@ -471,7 +471,7 @@ def run_codex_json_stream(
             bufsize=1,
         )
     except OSError as exc:
-        print(f"cxp: unable to start Codex: {exc}", file=sys.stderr)
+        print(f"ctui: unable to start Codex: {exc}", file=sys.stderr)
         return 2
     assert process.stdout is not None
     renderer = CodexStreamRenderer()

@@ -7,20 +7,20 @@ from unittest.mock import patch
 
 import path_bootstrap  # noqa: F401
 
-from codex_plus.models import ThreadRow
-from codex_plus.tui import CursesStreamWriter, TuiApp, stream_new_prompt, stream_selected_thread, visible_lines, wrap_lines
+from codex_tui.models import ThreadRow
+from codex_tui.tui import CursesStreamWriter, TuiApp, stream_new_prompt, stream_selected_thread, visible_lines, wrap_lines
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class TuiTests(unittest.TestCase):
-    @patch("codex_plus.tui.run_codex_json_stream")
-    def test_stream_selected_thread_uses_codexplus_json_resume(self, stream_mock) -> None:
+    @patch("codex_tui.tui.run_codex_json_stream")
+    def test_stream_selected_thread_uses_codextui_json_resume(self, stream_mock) -> None:
         stream_mock.return_value = 0
         thread = sample_thread()
 
-        with patch("codex_plus.tui.real_codex_bin", return_value=Path("/tmp/codex")):
+        with patch("codex_tui.tui.real_codex_bin", return_value=Path("/tmp/codex")):
             result = stream_selected_thread(thread, "Continue from the selected session")
 
         self.assertEqual(result, 0)
@@ -36,13 +36,13 @@ class TuiTests(unittest.TestCase):
             raw_json=False,
         )
 
-    @patch("codex_plus.tui.run_codex_json_stream")
+    @patch("codex_tui.tui.run_codex_json_stream")
     def test_stream_selected_thread_routes_output_back_to_tui(self, stream_mock) -> None:
         stream_mock.return_value = 0
         thread = sample_thread()
         output = StringIO()
 
-        with patch("codex_plus.tui.real_codex_bin", return_value=Path("/tmp/codex")):
+        with patch("codex_tui.tui.real_codex_bin", return_value=Path("/tmp/codex")):
             result = stream_selected_thread(thread, "Continue", stdout=output)
 
         self.assertEqual(result, 0)
@@ -53,11 +53,11 @@ class TuiTests(unittest.TestCase):
             stderr_to_stdout=True,
         )
 
-    @patch("codex_plus.tui.run_codex_json_stream")
-    def test_stream_new_prompt_uses_codexplus_json_exec(self, stream_mock) -> None:
+    @patch("codex_tui.tui.run_codex_json_stream")
+    def test_stream_new_prompt_uses_codextui_json_exec(self, stream_mock) -> None:
         stream_mock.return_value = 0
 
-        with patch("codex_plus.tui.real_codex_bin", return_value=Path("/tmp/codex")):
+        with patch("codex_tui.tui.real_codex_bin", return_value=Path("/tmp/codex")):
             result = stream_new_prompt("Start a new task")
 
         self.assertEqual(result, 0)
@@ -66,12 +66,12 @@ class TuiTests(unittest.TestCase):
             raw_json=False,
         )
 
-    @patch("codex_plus.tui.run_codex_json_stream")
+    @patch("codex_tui.tui.run_codex_json_stream")
     def test_stream_new_prompt_routes_output_back_to_tui(self, stream_mock) -> None:
         stream_mock.return_value = 0
         output = StringIO()
 
-        with patch("codex_plus.tui.real_codex_bin", return_value=Path("/tmp/codex")):
+        with patch("codex_tui.tui.real_codex_bin", return_value=Path("/tmp/codex")):
             result = stream_new_prompt("Start a new task", stdout=output)
 
         self.assertEqual(result, 0)
@@ -243,7 +243,7 @@ class TuiTests(unittest.TestCase):
 
         self.assertIn("No Codex sessions found", lines)
         self.assertIn("Press n to start", lines)
-        self.assertIn("cxp doctor", lines)
+        self.assertIn("ctui doctor", lines)
 
     def test_empty_tui_enter_does_not_crash_without_selected_session(self) -> None:
         app = TuiApp([], lambda _thread, _prompt, _stdout: 0)
@@ -287,7 +287,7 @@ class TuiTests(unittest.TestCase):
         app.ask_new()
 
         self.assertEqual(prompts, ["Start fresh"])
-        self.assertEqual(app.stream_lines[0], "CodexPlus streaming a new prompt via codex exec --json")
+        self.assertEqual(app.stream_lines[0], "CodexTUI streaming a new prompt via codex exec --json")
         self.assertEqual(app.stream_command_label, "codex exec --json")
         self.assertIn("new answer", app.stream_lines)
         self.assertEqual(app.threads, refreshed)

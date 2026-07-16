@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "codexplus"
+name = "codextui"
 version = "0.1.0"
 description = "Unofficial local workbench for the OpenAI Codex CLI."
 readme = "README.md"
@@ -28,15 +28,15 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/ephemeraldream/CodexPlus"
-Repository = "https://github.com/ephemeraldream/CodexPlus"
-Issues = "https://github.com/ephemeraldream/CodexPlus/issues"
+Homepage = "https://github.com/ephemeraldream/CodexTUI"
+Repository = "https://github.com/ephemeraldream/CodexTUI"
+Issues = "https://github.com/ephemeraldream/CodexTUI/issues"
 
 [project.scripts]
-cxp = "codex_plus.cli:main"
+ctui = "codex_tui.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/codex_plus"]
+packages = ["src/codex_tui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

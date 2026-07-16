@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import path_bootstrap  # noqa: F401
 
-from codex_plus.fzf import choose_search_match, choose_thread, parse_selection
-from codex_plus.models import SearchMatch, ThreadRow
+from codex_tui.fzf import choose_search_match, choose_thread, parse_selection
+from codex_tui.models import SearchMatch, ThreadRow
 
 
 class FzfTests(unittest.TestCase):
@@ -27,7 +27,7 @@ class FzfTests(unittest.TestCase):
         self.assertEqual(selection.action, "view")
         self.assertEqual(selection.value, "019f-test-basic")
 
-    @patch("codex_plus.fzf.subprocess.run")
+    @patch("codex_tui.fzf.subprocess.run")
     def test_choose_thread_enables_view_final_user_and_file_actions(self, run_mock) -> None:
         thread = sample_thread()
         run_mock.return_value = subprocess.CompletedProcess(
@@ -48,7 +48,7 @@ class FzfTests(unittest.TestCase):
         self.assertIn("ctrl-v views", " ".join(command))
         self.assertIn("ctrl-e edits a file", " ".join(command))
 
-    @patch("codex_plus.fzf.subprocess.run")
+    @patch("codex_tui.fzf.subprocess.run")
     def test_resume_picker_keeps_plain_resume_only_header(self, run_mock) -> None:
         thread = sample_thread()
         run_mock.return_value = subprocess.CompletedProcess(
@@ -67,7 +67,7 @@ class FzfTests(unittest.TestCase):
         self.assertNotIn("--expect=ctrl-v,ctrl-f,ctrl-u,ctrl-o,ctrl-e", command)
         self.assertIn("enter resumes selected session", " ".join(command))
 
-    @patch("codex_plus.fzf.subprocess.run")
+    @patch("codex_tui.fzf.subprocess.run")
     def test_choose_search_match_supports_same_session_actions(self, run_mock) -> None:
         thread = sample_thread()
         run_mock.return_value = subprocess.CompletedProcess(
@@ -84,7 +84,7 @@ class FzfTests(unittest.TestCase):
         self.assertEqual(selection.action, "final")
         self.assertEqual(selection.value, thread.id)
 
-    @patch("codex_plus.fzf.subprocess.run")
+    @patch("codex_tui.fzf.subprocess.run")
     def test_choose_search_match_supports_file_edit_action(self, run_mock) -> None:
         thread = sample_thread()
         run_mock.return_value = subprocess.CompletedProcess(

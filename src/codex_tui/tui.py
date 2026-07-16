@@ -35,7 +35,7 @@ class TuiApp:
     top: int = 0
     focus: str = "sessions"
     preview_top: int = 0
-    status: str = "Enter continues the selected session; n starts a new CodexPlus JSON stream."
+    status: str = "Enter continues the selected session; n starts a new CodexTUI JSON stream."
     preview_cache: dict[tuple[str, str], list[str]] = field(default_factory=dict)
     stream_lines: list[str] = field(default_factory=list)
     stream_top: int | None = None
@@ -141,11 +141,11 @@ class TuiApp:
         height, width = stdscr.getmaxyx()
         stdscr.erase()
         if height < 10 or width < 50:
-            add_text(stdscr, 0, 0, "Terminal too small for CodexPlus TUI. Press q to quit.", width)
+            add_text(stdscr, 0, 0, "Terminal too small for CodexTUI. Press q to quit.", width)
             stdscr.refresh()
             return
 
-        add_text(stdscr, 0, 0, " CodexPlus TUI ", width, curses.A_REVERSE)
+        add_text(stdscr, 0, 0, " CodexTUI ", width, curses.A_REVERSE)
         list_width = max(26, min(44, width // 3))
         preview_x = list_width + 2
         preview_width = max(1, width - preview_x)
@@ -165,7 +165,7 @@ class TuiApp:
         if self.threads:
             help_text = "tab focus | arrows move/scroll | enter resume | n new | r refresh | v/a/f/u/o modes | q quit"
         else:
-            help_text = "n new prompt | r refresh | q quit | run cxp doctor if Codex is not ready"
+            help_text = "n new prompt | r refresh | q quit | run ctui doctor if Codex is not ready"
         add_text(stdscr, height - 2, 0, help_text, width, curses.A_REVERSE)
         add_text(stdscr, height - 1, 0, self.status, width)
         stdscr.refresh()
@@ -219,8 +219,8 @@ class TuiApp:
         return [
             "No Codex sessions found for the current filters.",
             "",
-            "Press n to start a new Codex prompt through CodexPlus.",
-            "Use cxp doctor if Codex is not installed or not logged in.",
+            "Press n to start a new Codex prompt through CodexTUI.",
+            "Use ctui doctor if Codex is not installed or not logged in.",
             "Use r to refresh after Codex creates a session.",
         ]
 
@@ -228,13 +228,13 @@ class TuiApp:
         if not self.threads:
             self.status = "No selected session. Press n to start a new Codex prompt."
             return
-        prompt = self.read_prompt("Ask CodexPlus")
+        prompt = self.read_prompt("Ask CodexTUI")
         if not prompt:
             self.status = "Ask cancelled."
             return
         thread = self.selected_thread()
         self.stream_prompt(
-            title=f"CodexPlus streaming {short_id(thread.id)} via codex exec resume --json",
+            title=f"CodexTUI streaming {short_id(thread.id)} via codex exec resume --json",
             command_label="codex exec resume --json",
             runner=lambda stdout: self.stream_runner(thread, prompt, stdout),
         )
@@ -250,7 +250,7 @@ class TuiApp:
             self.status = "New prompt cancelled."
             return
         code = self.stream_prompt(
-            title="CodexPlus streaming a new prompt via codex exec --json",
+            title="CodexTUI streaming a new prompt via codex exec --json",
             command_label="codex exec --json",
             runner=lambda stdout: self.new_stream_runner(prompt, stdout),
         )
@@ -261,7 +261,7 @@ class TuiApp:
         self.stream_top = None
         self.stream_command_label = command_label
         self.stream_lines = [title, ""]
-        self.status = "Streaming response inside CodexPlus TUI."
+        self.status = "Streaming response inside CodexTUI."
         self.draw_stream()
         writer = CursesStreamWriter(self)
         code = runner(writer)
@@ -296,11 +296,11 @@ class TuiApp:
         height, width = stdscr.getmaxyx()
         stdscr.erase()
         if height < 6 or width < 30:
-            add_text(stdscr, 0, 0, "Streaming in CodexPlus TUI. Please wait.", width)
+            add_text(stdscr, 0, 0, "Streaming in CodexTUI. Please wait.", width)
             stdscr.refresh()
             return
 
-        add_text(stdscr, 0, 0, " CodexPlus Stream ", width, curses.A_REVERSE)
+        add_text(stdscr, 0, 0, " CodexTUI Stream ", width, curses.A_REVERSE)
         body_height = height - 3
         for row, line in enumerate(self.visible_stream_lines(current_line, width, body_height), start=1):
             add_text(stdscr, row, 0, line, width)
@@ -308,7 +308,7 @@ class TuiApp:
             stdscr,
             height - 2,
             0,
-            f"{self.stream_command_label} | output captured by CodexPlus | scroll after finish",
+            f"{self.stream_command_label} | output captured by CodexTUI | scroll after finish",
             width,
             curses.A_REVERSE,
         )
@@ -384,7 +384,7 @@ def run_tui(
     raw_json: bool = False,
 ) -> int:
     if not sys.stdin.isatty() or not sys.stdout.isatty():
-        print("cxp tui needs an interactive terminal.", file=sys.stderr)
+        print("ctui tui needs an interactive terminal.", file=sys.stderr)
         return 2
     store = CodexStore()
 
@@ -406,7 +406,7 @@ def run_tui(
         return stream_new_prompt(prompt, raw_json=raw_json, stdout=stdout)
 
     status = (
-        "Enter continues the selected session; n starts a new CodexPlus JSON stream."
+        "Enter continues the selected session; n starts a new CodexTUI JSON stream."
         if threads
         else "No sessions found. Press n to start a new Codex prompt, or q to quit."
     )

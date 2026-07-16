@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 import path_bootstrap  # noqa: F401
 
-from codex_plus.doctor import diagnostics_exit_code, diagnostics_json, run_diagnostics
-from codex_plus.paths import real_codex_bin
+from codex_tui.doctor import diagnostics_exit_code, diagnostics_json, run_diagnostics
+from codex_tui.paths import real_codex_bin
 
 
 class DoctorTests(unittest.TestCase):
@@ -55,7 +55,7 @@ class DoctorTests(unittest.TestCase):
             env = dict(os.environ)
             env["PYTHONPATH"] = "src"
             result = subprocess.run(
-                [sys.executable, "-m", "codex_plus", "doctor", "--json", "--codex-bin", str(codex)],
+                [sys.executable, "-m", "codex_tui", "doctor", "--json", "--codex-bin", str(codex)],
                 cwd=os.getcwd(),
                 env=env,
                 text=True,
@@ -78,7 +78,7 @@ class DoctorTests(unittest.TestCase):
             with patch.dict(os.environ, env, clear=True):
                 self.assertEqual(real_codex_bin(), codex)
 
-    def test_real_codex_bin_uses_persisted_codexplus_config(self) -> None:
+    def test_real_codex_bin_uses_persisted_codextui_config(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             codex = write_fake_codex(root, login_status=0)
@@ -90,7 +90,7 @@ class DoctorTests(unittest.TestCase):
             )
             env = {
                 "CODEX_HOME": str(root / "codex-home"),
-                "CODEXPLUS_CONFIG_HOME": str(config_home),
+                "CODEXTUI_CONFIG_HOME": str(config_home),
                 "PATH": "",
             }
             with patch.dict(os.environ, env, clear=True):

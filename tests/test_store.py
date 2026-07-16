@@ -9,7 +9,7 @@ from pathlib import Path
 
 import path_bootstrap  # noqa: F401
 
-from codex_plus.store import CodexStore, cwd_matches_filter
+from codex_tui.store import CodexStore, cwd_matches_filter
 
 
 FIXTURES = Path(__file__).parent / "fixtures"

@@ -14,20 +14,20 @@ def default_real_codex_bin() -> Path:
     return codex_home() / "packages" / "standalone" / "current" / "bin" / "codex"
 
 
-def codexplus_config_dir() -> Path:
-    configured = os.environ.get("CODEXPLUS_CONFIG_HOME")
+def codextui_config_dir() -> Path:
+    configured = os.environ.get("CODEXTUI_CONFIG_HOME")
     if configured:
         return Path(configured).expanduser()
     base = Path(os.environ.get("XDG_CONFIG_HOME", "~/.config")).expanduser()
-    return base / "codexplus"
+    return base / "codextui"
 
 
-def codexplus_config_path() -> Path:
-    return codexplus_config_dir() / "config.json"
+def codextui_config_path() -> Path:
+    return codextui_config_dir() / "config.json"
 
 
 def configured_real_codex_bin() -> Path | None:
-    path = codexplus_config_path()
+    path = codextui_config_path()
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):

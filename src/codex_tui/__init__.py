@@ -1,4 +1,4 @@
-"""CodexPlus public package surface."""
+"""CodexTUI public package surface."""
 
 __all__ = ["__version__"]
 

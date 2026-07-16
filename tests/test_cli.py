@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 import path_bootstrap  # noqa: F401
 
-from codex_plus.cli import handle_session_selection, main
-from codex_plus.fzf import PickerSelection
+from codex_tui.cli import handle_session_selection, main
+from codex_tui.fzf import PickerSelection
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -23,20 +23,20 @@ class CliTests(unittest.TestCase):
         env = dict(os.environ)
         env["PYTHONPATH"] = "src"
         result = subprocess.run(
-            [sys.executable, "-m", "codex_plus", "--version"],
+            [sys.executable, "-m", "codex_tui", "--version"],
             cwd=os.getcwd(),
             env=env,
             text=True,
             capture_output=True,
             check=True,
         )
-        self.assertIn("CodexPlus 0.1.0", result.stdout)
+        self.assertIn("CodexTUI 0.1.0", result.stdout)
 
     def test_help_hides_internal_preview_commands(self) -> None:
         env = dict(os.environ)
         env["PYTHONPATH"] = "src"
         result = subprocess.run(
-            [sys.executable, "-m", "codex_plus", "--help"],
+            [sys.executable, "-m", "codex_tui", "--help"],
             cwd=os.getcwd(),
             env=env,
             text=True,
@@ -52,7 +52,7 @@ class CliTests(unittest.TestCase):
         env = dict(os.environ)
         env["PYTHONPATH"] = "src"
         result = subprocess.run(
-            [sys.executable, "-m", "codex_plus", "compress"],
+            [sys.executable, "-m", "codex_tui", "compress"],
             cwd=os.getcwd(),
             env=env,
             text=True,
@@ -74,7 +74,7 @@ class CliTests(unittest.TestCase):
             env["PYTHONPATH"] = "src"
             env["CODEX_HOME"] = str(home)
             result = subprocess.run(
-                [sys.executable, "-m", "codex_plus", "search", "src/app.py", "--open"],
+                [sys.executable, "-m", "codex_tui", "search", "src/app.py", "--open"],
                 cwd=os.getcwd(),
                 env=env,
                 text=True,
@@ -85,7 +85,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("019f-tes", result.stdout)
         self.assertIn("src/app.py", result.stdout)
-        self.assertIn("cxp view 019f-test-files --mode chat", result.stdout)
+        self.assertIn("ctui view 019f-test-files --mode chat", result.stdout)
 
     def test_search_ignores_tool_call_payloads(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -99,7 +99,7 @@ class CliTests(unittest.TestCase):
             env["PYTHONPATH"] = "src"
             env["CODEX_HOME"] = str(home)
             result = subprocess.run(
-                [sys.executable, "-m", "codex_plus", "search", "hidden_tool_call.py"],
+                [sys.executable, "-m", "codex_tui", "search", "hidden_tool_call.py"],
                 cwd=os.getcwd(),
                 env=env,
                 text=True,
@@ -122,7 +122,7 @@ class CliTests(unittest.TestCase):
             env["PYTHONPATH"] = "src"
             env["CODEX_HOME"] = str(home)
             result = subprocess.run(
-                [sys.executable, "-m", "codex_plus", "search", "src/app.py", "--json"],
+                [sys.executable, "-m", "codex_tui", "search", "src/app.py", "--json"],
                 cwd=os.getcwd(),
                 env=env,
                 text=True,
@@ -151,7 +151,7 @@ class CliTests(unittest.TestCase):
             env["PYTHONPATH"] = "src"
             env["CODEX_HOME"] = str(home)
             result = subprocess.run(
-                [sys.executable, "-m", "codex_plus", "search", "not-present", "--json"],
+                [sys.executable, "-m", "codex_tui", "search", "not-present", "--json"],
                 cwd=os.getcwd(),
                 env=env,
                 text=True,
@@ -176,7 +176,7 @@ class CliTests(unittest.TestCase):
             env["PYTHONPATH"] = "src"
             env["CODEX_HOME"] = str(home)
             boilerplate_result = subprocess.run(
-                [sys.executable, "-m", "codex_plus", "search", "This is iteration"],
+                [sys.executable, "-m", "codex_tui", "search", "This is iteration"],
                 cwd=os.getcwd(),
                 env=env,
                 text=True,
@@ -184,7 +184,7 @@ class CliTests(unittest.TestCase):
                 check=False,
             )
             objective_result = subprocess.run(
-                [sys.executable, "-m", "codex_plus", "search", "keyboard-only"],
+                [sys.executable, "-m", "codex_tui", "search", "keyboard-only"],
                 cwd=os.getcwd(),
                 env=env,
                 text=True,
@@ -207,7 +207,7 @@ class CliTests(unittest.TestCase):
             env["PYTHONPATH"] = "src"
             env["CODEX_HOME"] = str(home)
             status_result = subprocess.run(
-                [sys.executable, "-m", "codex_plus", "search", "checking notes"],
+                [sys.executable, "-m", "codex_tui", "search", "checking notes"],
                 cwd=os.getcwd(),
                 env=env,
                 text=True,
@@ -215,7 +215,7 @@ class CliTests(unittest.TestCase):
                 check=False,
             )
             final_result = subprocess.run(
-                [sys.executable, "-m", "codex_plus", "search", "completed iteration"],
+                [sys.executable, "-m", "codex_tui", "search", "completed iteration"],
                 cwd=os.getcwd(),
                 env=env,
                 text=True,
@@ -244,7 +244,7 @@ class CliTests(unittest.TestCase):
             env["PYTHONPATH"] = "src"
             env["CODEX_HOME"] = str(home)
             search_result = subprocess.run(
-                [sys.executable, "-m", "codex_plus", "search", "hidden bootstrap"],
+                [sys.executable, "-m", "codex_tui", "search", "hidden bootstrap"],
                 cwd=os.getcwd(),
                 env=env,
                 text=True,
@@ -252,7 +252,7 @@ class CliTests(unittest.TestCase):
                 check=False,
             )
             user_result = subprocess.run(
-                [sys.executable, "-m", "codex_plus", "user", "last", "--no-pager"],
+                [sys.executable, "-m", "codex_tui", "user", "last", "--no-pager"],
                 cwd=os.getcwd(),
                 env=env,
                 text=True,
@@ -284,7 +284,7 @@ class CliTests(unittest.TestCase):
             env["PYTHONPATH"] = str(repo_root / "src")
             env["CODEX_HOME"] = str(home)
             result = subprocess.run(
-                [sys.executable, "-m", "codex_plus", "list", "--here", "--limit", "20"],
+                [sys.executable, "-m", "codex_tui", "list", "--here", "--limit", "20"],
                 cwd=nested,
                 env=env,
                 text=True,
@@ -326,7 +326,7 @@ class CliTests(unittest.TestCase):
             env["PYTHONPATH"] = str(repo_root / "src")
             env["CODEX_HOME"] = str(home)
             view_result = subprocess.run(
-                [sys.executable, "-m", "codex_plus", "view", "--here", "--no-pager"],
+                [sys.executable, "-m", "codex_tui", "view", "--here", "--no-pager"],
                 cwd=nested,
                 env=env,
                 text=True,
@@ -334,7 +334,7 @@ class CliTests(unittest.TestCase):
                 check=False,
             )
             files_result = subprocess.run(
-                [sys.executable, "-m", "codex_plus", "files", "--here"],
+                [sys.executable, "-m", "codex_tui", "files", "--here"],
                 cwd=nested,
                 env=env,
                 text=True,
@@ -349,8 +349,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("src/app.py", files_result.stdout)
         self.assertNotIn("src/other.py", files_result.stdout)
 
-    @patch("codex_plus.cli.run_codex_json_stream")
-    def test_stream_command_runs_codex_exec_json_through_codexplus(self, stream_mock) -> None:
+    @patch("codex_tui.cli.run_codex_json_stream")
+    def test_stream_command_runs_codex_exec_json_through_codextui(self, stream_mock) -> None:
         stream_mock.return_value = 0
         with patch.dict(os.environ, {"CODEX_REAL_BIN": "/tmp/codex"}):
             result = main(["stream", "--raw-json", "Fix", "the", "bug"])
@@ -358,7 +358,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result, 0)
         stream_mock.assert_called_once_with(["/tmp/codex", "exec", "--json", "Fix the bug"], raw_json=True)
 
-    @patch("codex_plus.cli.run_codex_json_stream")
+    @patch("codex_tui.cli.run_codex_json_stream")
     def test_stream_resume_resolves_selector_without_opening_interactive_codex(self, stream_mock) -> None:
         stream_mock.return_value = 0
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -373,14 +373,14 @@ class CliTests(unittest.TestCase):
             raw_json=False,
         )
 
-    @patch("codex_plus.cli.run_codex_json_stream")
+    @patch("codex_tui.cli.run_codex_json_stream")
     def test_stream_resume_uses_stdin_marker_when_prompt_is_piped(self, stream_mock) -> None:
         stream_mock.return_value = 0
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
             write_cli_session(home, "019f-test-piped", cwd="/tmp/project", user_message="Stream this session")
             with patch.dict(os.environ, {"CODEX_HOME": str(home), "CODEX_REAL_BIN": "/tmp/codex"}):
-                with patch("codex_plus.cli.sys.stdin.isatty", return_value=False):
+                with patch("codex_tui.cli.sys.stdin.isatty", return_value=False):
                     result = main(["stream", "--resume", "last"])
 
         self.assertEqual(result, 0)
@@ -389,10 +389,10 @@ class CliTests(unittest.TestCase):
             raw_json=False,
         )
 
-    @patch("codex_plus.cli.run_tui")
+    @patch("codex_tui.cli.run_tui")
     def test_tui_command_passes_filters_to_terminal_ui(self, tui_mock) -> None:
         tui_mock.return_value = 0
-        with patch("codex_plus.cli.current_project_root", return_value=Path("/tmp/project")):
+        with patch("codex_tui.cli.current_project_root", return_value=Path("/tmp/project")):
             result = main(
                 [
                     "tui",
@@ -418,7 +418,7 @@ class CliTests(unittest.TestCase):
             raw_json=True,
         )
 
-    @patch("codex_plus.cli.view_thread")
+    @patch("codex_tui.cli.view_thread")
     def test_picker_view_action_renders_clean_transcript_instead_of_resuming(self, view_mock) -> None:
         view_mock.return_value = 0
 
@@ -429,7 +429,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(args.selector, "019f-test-basic")
         self.assertEqual(args.mode, "assistant")
 
-    @patch("codex_plus.cli.files_thread")
+    @patch("codex_tui.cli.files_thread")
     def test_picker_files_action_lists_files_without_opening_editor(self, files_mock) -> None:
         files_mock.return_value = 0
 
@@ -441,7 +441,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(args.mode, "chat")
         self.assertFalse(args.open)
 
-    @patch("codex_plus.cli.files_thread")
+    @patch("codex_tui.cli.files_thread")
     def test_picker_edit_file_action_opens_file_picker(self, files_mock) -> None:
         files_mock.return_value = 0
 

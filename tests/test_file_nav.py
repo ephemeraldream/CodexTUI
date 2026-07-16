@@ -9,8 +9,8 @@ from pathlib import Path
 
 import path_bootstrap  # noqa: F401
 
-from codex_plus.file_nav import collect_file_hits
-from codex_plus.models import ChatMessage
+from codex_tui.file_nav import collect_file_hits
+from codex_tui.models import ChatMessage
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -47,7 +47,7 @@ class FileNavTests(unittest.TestCase):
             env["PYTHONPATH"] = "src"
             env["CODEX_HOME"] = str(home)
             result = subprocess.run(
-                [sys.executable, "-m", "codex_plus", "files", "last"],
+                [sys.executable, "-m", "codex_tui", "files", "last"],
                 cwd=os.getcwd(),
                 env=env,
                 text=True,

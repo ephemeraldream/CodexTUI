@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "scripts" / "bootstrap-codexplus.sh"
+SCRIPT = ROOT / "scripts" / "bootstrap-codextui.sh"
 
 
 class BootstrapScriptTests(unittest.TestCase):
@@ -35,10 +35,10 @@ class BootstrapScriptTests(unittest.TestCase):
             bin_dir = root / "fake-tools"
             bin_dir.mkdir()
             write_fake_pipx(bin_dir)
-            write_fake_cxp(bin_dir)
+            write_fake_ctui(bin_dir)
             config_home = root / "config"
             env = dict(os.environ)
-            env["CODEXPLUS_CONFIG_HOME"] = str(config_home)
+            env["CODEXTUI_CONFIG_HOME"] = str(config_home)
             env["CODEX_HOME"] = str(root / "codex-home")
             env["PYTHON"] = sys.executable
             env["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
@@ -104,9 +104,9 @@ exit 0
     pipx.chmod(0o755)
 
 
-def write_fake_cxp(bin_dir: Path) -> None:
-    cxp = bin_dir / "cxp"
-    cxp.write_text(
+def write_fake_ctui(bin_dir: Path) -> None:
+    ctui = bin_dir / "ctui"
+    ctui.write_text(
         """#!/bin/sh
 case "${1:-}" in
   doctor)
@@ -118,7 +118,7 @@ exit 0
 """,
         encoding="utf-8",
     )
-    cxp.chmod(0o755)
+    ctui.chmod(0o755)
 
 
 if __name__ == "__main__":

@@ -34,7 +34,7 @@ def run_diagnostics(*, codex_bin: Path | None = None) -> list[DiagnosticCheck]:
     binary = codex_bin or real_codex_bin()
     checks = [
         check_python(),
-        check_cxp_version(),
+        check_ctui_version(),
         check_codex_binary(binary),
     ]
     if binary.exists():
@@ -49,7 +49,7 @@ def run_diagnostics(*, codex_bin: Path | None = None) -> list[DiagnosticCheck]:
         [
             check_codex_state(),
             check_fzf(),
-            check_cxp_on_path(),
+            check_ctui_on_path(),
         ]
     )
     return checks
@@ -67,8 +67,8 @@ def check_python() -> DiagnosticCheck:
     )
 
 
-def check_cxp_version() -> DiagnosticCheck:
-    return DiagnosticCheck("codexplus", "ok", f"CodexPlus {__version__}")
+def check_ctui_version() -> DiagnosticCheck:
+    return DiagnosticCheck("codextui", "ok", f"CodexTUI {__version__}")
 
 
 def check_codex_binary(binary: Path) -> DiagnosticCheck:
@@ -78,7 +78,7 @@ def check_codex_binary(binary: Path) -> DiagnosticCheck:
         "codex binary",
         "fail",
         f"Codex CLI not found at {binary}",
-        "Install Codex, set CODEX_REAL_BIN, or run `scripts/bootstrap-codexplus.sh --codex-bin PATH` from a checkout.",
+        "Install Codex, set CODEX_REAL_BIN, or run `scripts/bootstrap-codextui.sh --codex-bin PATH` from a checkout.",
     )
 
 
@@ -115,7 +115,7 @@ def check_codex_exec_json(binary: Path) -> DiagnosticCheck:
         "codex exec json",
         "fail",
         command_summary(result),
-        "Update Codex so CodexPlus can stream `codex exec --json` events.",
+        "Update Codex so CodexTUI can stream `codex exec --json` events.",
     )
 
 
@@ -137,7 +137,7 @@ def check_codex_state() -> DiagnosticCheck:
         "codex history",
         "warn",
         f"no local Codex history found under {home}",
-        "Run Codex once to create local history. `cxp stream` can still start a new Codex turn after login.",
+        "Run Codex once to create local history. `ctui stream` can still start a new Codex turn after login.",
     )
 
 
@@ -149,25 +149,25 @@ def check_fzf() -> DiagnosticCheck:
         "fzf",
         "warn",
         "fzf not found",
-        "`cxp tui` works without fzf, but `cxp h` is better with fzf installed.",
+        "`ctui tui` works without fzf, but `ctui h` is better with fzf installed.",
     )
 
 
-def check_cxp_on_path() -> DiagnosticCheck:
-    cxp = shutil.which("cxp")
-    if cxp:
-        return DiagnosticCheck("cxp on PATH", "ok", cxp)
+def check_ctui_on_path() -> DiagnosticCheck:
+    ctui = shutil.which("ctui")
+    if ctui:
+        return DiagnosticCheck("ctui on PATH", "ok", ctui)
     return DiagnosticCheck(
-        "cxp on PATH",
+        "ctui on PATH",
         "warn",
-        "cxp command is not on PATH",
-        "Install with `pipx install -e .` or use `PYTHONPATH=src python3 -m codex_plus` from the checkout.",
+        "ctui command is not on PATH",
+        "Install with `pipx install -e .` or use `PYTHONPATH=src python3 -m codex_tui` from the checkout.",
     )
 
 
 def render_diagnostics(checks: list[DiagnosticCheck]) -> str:
     width = max(len(check.name) for check in checks) if checks else 12
-    lines = ["CodexPlus doctor"]
+    lines = ["CodexTUI doctor"]
     for check in checks:
         status = check.status.upper()
         lines.append(f"{status:5}  {check.name:{width}}  {check.detail}")

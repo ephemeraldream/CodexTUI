@@ -8,15 +8,15 @@ LOGIN_METHOD=browser
 INSTALL_SHIM=no
 CHECK_ONLY=no
 PYTHON_BIN=${PYTHON:-}
-CXP_BIN=${CXP_BIN:-}
+CTUI_BIN=${CTUI_BIN:-}
 CODEX_BIN=${CODEX_REAL_BIN:-}
 PERSIST_CODEX_BIN=no
 
 usage() {
   cat <<'EOF'
-Usage: scripts/bootstrap-codexplus.sh [options]
+Usage: scripts/bootstrap-codextui.sh [options]
 
-Set up CodexPlus from a checkout and verify that the official Codex CLI is ready.
+Set up CodexTUI from a checkout and verify that the official Codex CLI is ready.
 
 Options:
   --yes                 Use the recommended setup path: install Codex if missing and run login if needed.
@@ -26,16 +26,16 @@ Options:
   --login               Run Codex login if Codex is not already authenticated.
   --no-login            Do not prompt for Codex login.
   --with-api-key        Login with OPENAI_API_KEY through `codex login --with-api-key`.
-  --install-shim        Install the optional `codex` shim after CodexPlus is installed.
+  --install-shim        Install the optional `codex` shim after CodexTUI is installed.
   --check-only          Do not install anything; run environment checks only.
   -h, --help            Show this help.
 
 Examples:
-  scripts/bootstrap-codexplus.sh
-  scripts/bootstrap-codexplus.sh --yes
-  scripts/bootstrap-codexplus.sh --codex-bin ~/.local/bin/codex
-  scripts/bootstrap-codexplus.sh --install-codex --login
-  OPENAI_API_KEY=... scripts/bootstrap-codexplus.sh --with-api-key
+  scripts/bootstrap-codextui.sh
+  scripts/bootstrap-codextui.sh --yes
+  scripts/bootstrap-codextui.sh --codex-bin ~/.local/bin/codex
+  scripts/bootstrap-codextui.sh --install-codex --login
+  OPENAI_API_KEY=... scripts/bootstrap-codextui.sh --with-api-key
 EOF
 }
 
@@ -199,11 +199,11 @@ import sys
 from pathlib import Path
 
 codex_bin = str(Path(sys.argv[1]).expanduser().resolve(strict=False))
-configured = os.environ.get("CODEXPLUS_CONFIG_HOME")
+configured = os.environ.get("CODEXTUI_CONFIG_HOME")
 if configured:
     config_dir = Path(configured).expanduser()
 else:
-    config_dir = Path(os.environ.get("XDG_CONFIG_HOME", "~/.config")).expanduser() / "codexplus"
+    config_dir = Path(os.environ.get("XDG_CONFIG_HOME", "~/.config")).expanduser() / "codextui"
 config_dir.mkdir(parents=True, exist_ok=True)
 config_path = config_dir / "config.json"
 try:
@@ -285,82 +285,82 @@ login_codex_if_needed() {
   if [ "$should_login" = yes ]; then
     "$CODEX_BIN" login
   else
-    warn "Skipping Codex login. Run `codex login` before using `cxp stream` or TUI prompts."
+    warn "Skipping Codex login. Run `codex login` before using `ctui stream` or TUI prompts."
   fi
 }
 
-install_codexplus() {
+install_codextui() {
   if [ "$CHECK_ONLY" = yes ]; then
     return
   fi
 
   if command -v pipx >/dev/null 2>&1; then
-    log "Installing CodexPlus with pipx from $ROOT_DIR"
+    log "Installing CodexTUI with pipx from $ROOT_DIR"
     pipx install -e "$ROOT_DIR" --force
-    if command -v cxp >/dev/null 2>&1; then
-      CXP_BIN=$(command -v cxp)
-    elif [ -x "$HOME/.local/bin/cxp" ]; then
-      CXP_BIN="$HOME/.local/bin/cxp"
+    if command -v ctui >/dev/null 2>&1; then
+      CTUI_BIN=$(command -v ctui)
+    elif [ -x "$HOME/.local/bin/ctui" ]; then
+      CTUI_BIN="$HOME/.local/bin/ctui"
     fi
-    [ -n "$CXP_BIN" ] || fail "pipx installed CodexPlus, but cxp was not found on PATH."
+    [ -n "$CTUI_BIN" ] || fail "pipx installed CodexTUI, but ctui was not found on PATH."
     return
   fi
 
-  log "pipx not found. Installing CodexPlus into $ROOT_DIR/.venv"
+  log "pipx not found. Installing CodexTUI into $ROOT_DIR/.venv"
   "$PYTHON_BIN" -m venv "$ROOT_DIR/.venv"
   "$ROOT_DIR/.venv/bin/python" -m pip install -e "$ROOT_DIR"
-  CXP_BIN="$ROOT_DIR/.venv/bin/cxp"
+  CTUI_BIN="$ROOT_DIR/.venv/bin/ctui"
 }
 
-run_cxp() {
-  if [ -n "$CXP_BIN" ] && [ -x "$CXP_BIN" ]; then
-    "$CXP_BIN" "$@"
-  elif [ -d "$ROOT_DIR/src/codex_plus" ]; then
-    PYTHONPATH="$ROOT_DIR/src" "$PYTHON_BIN" -m codex_plus "$@"
-  elif command -v cxp >/dev/null 2>&1; then
-    cxp "$@"
+run_ctui() {
+  if [ -n "$CTUI_BIN" ] && [ -x "$CTUI_BIN" ]; then
+    "$CTUI_BIN" "$@"
+  elif [ -d "$ROOT_DIR/src/codex_tui" ]; then
+    PYTHONPATH="$ROOT_DIR/src" "$PYTHON_BIN" -m codex_tui "$@"
+  elif command -v ctui >/dev/null 2>&1; then
+    ctui "$@"
   else
-    fail "cxp is not installed and local source package was not found."
+    fail "ctui is not installed and local source package was not found."
   fi
 }
 
 install_shim_if_requested() {
   [ "$INSTALL_SHIM" = yes ] || return 0
   if [ -n "$CODEX_BIN" ]; then
-    run_cxp install-shim --real-codex "$CODEX_BIN" --force
+    run_ctui install-shim --real-codex "$CODEX_BIN" --force
   else
-    run_cxp install-shim --force
+    run_ctui install-shim --force
   fi
 }
 
 run_doctor() {
   if [ -n "$CODEX_BIN" ]; then
-    run_cxp doctor --codex-bin "$CODEX_BIN"
+    run_ctui doctor --codex-bin "$CODEX_BIN"
   else
-    run_cxp doctor
+    run_ctui doctor
   fi
 }
 
 next_command() {
-  if [ -n "$CXP_BIN" ] && [ -x "$CXP_BIN" ]; then
-    printf '%s tui\n' "$CXP_BIN"
+  if [ -n "$CTUI_BIN" ] && [ -x "$CTUI_BIN" ]; then
+    printf '%s tui\n' "$CTUI_BIN"
   else
-    printf 'cxp tui\n'
+    printf 'ctui tui\n'
   fi
 }
 
 main() {
-  log "CodexPlus bootstrap"
+  log "CodexTUI bootstrap"
   log "Repository: $ROOT_DIR"
   find_python
   check_python
   install_codex_if_needed
   login_codex_if_needed
-  install_codexplus
+  install_codextui
   install_shim_if_requested
   log ""
   run_doctor
-  log "Next: run \`$(next_command)\` for the CodexPlus terminal UI."
+  log "Next: run \`$(next_command)\` for the CodexTUI terminal UI."
 }
 
 main

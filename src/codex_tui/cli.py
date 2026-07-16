@@ -28,7 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return int(args.func(args) or 0)
     except LookupError as exc:
-        print(f"cxp: {exc}", file=sys.stderr)
+        print(f"ctui: {exc}", file=sys.stderr)
         return 2
 
 
@@ -46,10 +46,10 @@ def normalize_argv(argv: list[str]) -> list[str]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="cxp",
-        description="CodexPlus, an unofficial local workbench for OpenAI Codex CLI sessions.",
+        prog="ctui",
+        description="CodexTUI, an unofficial local workbench for OpenAI Codex CLI sessions.",
     )
-    parser.add_argument("--version", action="version", version=f"CodexPlus {__version__}")
+    parser.add_argument("--version", action="version", version=f"CodexTUI {__version__}")
     sub = parser.add_subparsers(
         dest="command",
         metavar="{tui,browse,list,view,files,assistant,final,user,search,resume,stream,path,stats,doctor,install-shim,compress}",
@@ -77,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     browse_p.add_argument("--mode", choices=["chat", "assistant", "final", "user"], default="chat")
     browse_p.set_defaults(func=browse_threads)
 
-    tui_p = sub.add_parser("tui", aliases=["ui"], help="open a CodexPlus terminal UI")
+    tui_p = sub.add_parser("tui", aliases=["ui"], help="open a CodexTUI terminal UI")
     add_common_filters(tui_p)
     tui_p.add_argument("--raw-json", action="store_true", help="show raw Codex JSONL while streaming")
     tui_p.set_defaults(func=run_tui_command)
@@ -150,7 +150,7 @@ def build_parser() -> argparse.ArgumentParser:
     resume_cwd_group.add_argument("--here", action="store_true", help="filter to the current git workspace or cwd")
     resume_p.set_defaults(func=resume_thread)
 
-    stream_p = sub.add_parser("stream", aliases=["ask"], help="run Codex exec through a CodexPlus JSON stream")
+    stream_p = sub.add_parser("stream", aliases=["ask"], help="run Codex exec through a CodexTUI JSON stream")
     stream_p.add_argument("--resume", metavar="SELECTOR", help="resume a session through codex exec resume")
     add_cwd_scope(stream_p)
     stream_p.add_argument("--raw-json", action="store_true", help="print raw Codex JSONL events")
@@ -165,7 +165,7 @@ def build_parser() -> argparse.ArgumentParser:
     stats_p = sub.add_parser("stats", help="show session counts")
     stats_p.set_defaults(func=stats)
 
-    doctor_p = sub.add_parser("doctor", help="check CodexPlus, Codex CLI, auth, and local history")
+    doctor_p = sub.add_parser("doctor", help="check CodexTUI, Codex CLI, auth, and local history")
     doctor_p.add_argument("--json", action="store_true", help="emit diagnostic checks as JSON")
     doctor_p.add_argument("--strict", action="store_true", help="exit non-zero on warnings as well as failures")
     doctor_p.add_argument("--codex-bin", help="Codex executable to check instead of auto-detecting")
@@ -375,7 +375,7 @@ def print_search_matches(matches: list[SearchMatch], *, limit: int | None, mode:
         title = thread.title or thread.first_user_message or thread.preview
         print(f"{short_id(thread.id)}  {match.role:9}  {truncate(title, 64)}")
         print(f"  {match.snippet}")
-        print(f"  cxp view {thread.id} --mode {mode}")
+        print(f"  ctui view {thread.id} --mode {mode}")
 
 
 def print_search_matches_json(matches: list[SearchMatch], *, limit: int | None, mode: str) -> None:
@@ -424,7 +424,7 @@ def resume_thread(args: argparse.Namespace) -> int:
 def stream_codex(args: argparse.Namespace) -> int:
     prompt = joined_prompt(args.prompt)
     if (not prompt or prompt == "-") and sys.stdin.isatty():
-        print("cxp stream needs a prompt or piped stdin.", file=sys.stderr)
+        print("ctui stream needs a prompt or piped stdin.", file=sys.stderr)
         return 2
     resume_id = None
     if args.resume:
@@ -544,7 +544,7 @@ def install_shim(args: argparse.Namespace) -> int:
     content = shim_script(real_codex=args.real_codex)
     target.write_text(content, encoding="utf-8")
     target.chmod(0o755)
-    print(f"Installed CodexPlus shim at {target}")
+    print(f"Installed CodexTUI shim at {target}")
     return 0
 
 
@@ -554,14 +554,14 @@ set -eu
 case "${{1:-}}" in
   h|history)
     shift
-    exec cxp browse "$@"
+    exec ctui browse "$@"
     ;;
   sessions|conversations)
     shift
-    exec cxp list "$@"
+    exec ctui list "$@"
     ;;
   tui|ui|view|show|assistant|answers|final|user|questions|search|grep|files|stream|ask|stats|path)
-    exec cxp "$@"
+    exec ctui "$@"
     ;;
 esac
 exec {real_codex} "$@"
@@ -570,7 +570,7 @@ exec {real_codex} "$@"
 
 def compress_placeholder(_: argparse.Namespace) -> int:
     print("Compression is intentionally not implemented in v0.1.")
-    print("CodexPlus will add local summaries without rewriting Codex internal history.")
+    print("CodexTUI will add local summaries without rewriting Codex internal history.")
     return 2
 
 
@@ -579,7 +579,7 @@ def page(output: str) -> None:
     if shutil.which(pager.split()[0]) is None:
         print(output, end="")
         return
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, prefix="cxp-history-", suffix=".txt") as handle:
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, prefix="ctui-history-", suffix=".txt") as handle:
         handle.write(output)
         temp_path = handle.name
     try:
