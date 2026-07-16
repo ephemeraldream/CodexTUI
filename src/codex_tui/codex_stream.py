@@ -21,9 +21,11 @@ class CodexStreamRenderer:
     call_labels: dict[str, str] = field(default_factory=dict)
 
     def render_line(self, line: str) -> str | None:
-        text = text_from_json_line(line, call_labels=self.call_labels)
-        if text is None:
+        parsed, text = parse_stream_line(line, call_labels=self.call_labels)
+        if not parsed:
             return line.rstrip("\n") if line.strip() else None
+        if text is None:
+            return None
         stripped = text.rstrip()
         if not stripped or stripped == self.last_text:
             return None
@@ -52,16 +54,43 @@ def text_from_json_line(
     *,
     call_labels: dict[str, str] | None = None,
 ) -> str | None:
+    parsed, text = parse_stream_line(line, call_labels=call_labels)
+    return text if parsed else None
+
+
+def parse_stream_line(
+    line: str,
+    *,
+    call_labels: dict[str, str] | None = None,
+) -> tuple[bool, str | None]:
     try:
         record = json.loads(line)
     except json.JSONDecodeError:
-        return None
+        return False, None
     if not isinstance(record, dict):
+        return True, None
+    return True, text_from_stream_record(record, call_labels=call_labels)
+
+
+def text_from_stream_record(
+    record: dict[str, object],
+    *,
+    call_labels: dict[str, str] | None = None,
+) -> str | None:
+    record_type = record.get("type")
+    if record_type == "thread.started":
         return None
+    if record_type == "turn.started":
+        return "[task] Codex turn started."
+    if record_type == "turn.completed":
+        return render_turn_completed(record)
+    if record_type == "turn.failed":
+        return render_turn_failed(record)
+    if record_type == "item.completed":
+        return text_from_top_level_item(record.get("item"), call_labels=call_labels)
     payload = record.get("payload") or {}
     if not isinstance(payload, dict):
         return None
-    record_type = record.get("type")
     payload_type = payload.get("type")
     if record_type == "compacted":
         return render_compacted_record(payload)
@@ -85,6 +114,31 @@ def text_from_json_line(
     if record_type == "response_item":
         return text_from_response_item(payload, call_labels=call_labels)
     return None
+
+
+def text_from_top_level_item(
+    item: object,
+    *,
+    call_labels: dict[str, str] | None = None,
+) -> str | None:
+    if not isinstance(item, dict):
+        return None
+    item_type = str(item.get("type") or "")
+    if item_type == "agent_message":
+        text = str(item.get("text") or "")
+        if text and not looks_like_autonomous_status_update(text, ""):
+            return text
+        return None
+    if item_type == "user_message":
+        return render_user_message(item)
+    if item_type == "reasoning":
+        summary = reasoning_summary_text(item.get("summary"))
+        return f"[reasoning] {summary}" if summary else None
+    if item_type in {"function_call", "custom_tool_call", "tool_search_call", "web_search_call"}:
+        return text_from_response_item(item, call_labels=call_labels)
+    if item_type in {"function_call_output", "custom_tool_call_output", "tool_search_output"}:
+        return text_from_response_item(item, call_labels=call_labels)
+    return render_completed_item({"item": item})
 
 
 def text_from_event_payload(
@@ -272,6 +326,33 @@ def render_thread_rollback(payload: dict[str, object]) -> str:
         return "[thread] rolled back."
     label = "turn" if count == 1 else "turns"
     return f"[thread] rolled back {count} {label}."
+
+
+def render_turn_completed(record: dict[str, object]) -> str | None:
+    usage = record.get("usage")
+    if not isinstance(usage, dict):
+        return "[task] Codex turn completed."
+    parts: list[str] = []
+    labels = [
+        ("input_tokens", "input"),
+        ("cached_input_tokens", "cached"),
+        ("output_tokens", "output"),
+        ("reasoning_output_tokens", "reasoning"),
+    ]
+    for key, label in labels:
+        value = number_value(usage.get(key))
+        if value is not None:
+            parts.append(f"{label} {format_number(value)}")
+    return f"[tokens] {', '.join(parts)}" if parts else "[task] Codex turn completed."
+
+
+def render_turn_failed(record: dict[str, object]) -> str:
+    error = record.get("error")
+    if isinstance(error, dict):
+        message = compact_value(error.get("message") or error.get("detail") or error)
+    else:
+        message = compact_value(error)
+    return f"[task] Codex turn failed: {message}" if message else "[task] Codex turn failed."
 
 
 def render_compacted_record(payload: dict[str, object]) -> str:

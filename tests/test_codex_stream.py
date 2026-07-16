@@ -56,6 +56,49 @@ class CodexStreamTests(unittest.TestCase):
 
         self.assertEqual(renderer.render_line("plain output\n"), "plain output")
 
+    def test_renderer_suppresses_json_events_without_user_text(self) -> None:
+        renderer = CodexStreamRenderer()
+
+        self.assertIsNone(renderer.render_line(json.dumps({"type": "thread.started", "thread_id": "019f-test"})))
+        self.assertIsNone(renderer.render_line(json.dumps({"type": "unknown.event", "detail": "hidden"})))
+
+    def test_renderer_streams_top_level_turn_started(self) -> None:
+        renderer = CodexStreamRenderer()
+
+        self.assertEqual(renderer.render_line(json.dumps({"type": "turn.started"})), "[task] Codex turn started.")
+
+    def test_renderer_streams_top_level_agent_message_item(self) -> None:
+        line = json.dumps(
+            {
+                "type": "item.completed",
+                "item": {
+                    "id": "item_0",
+                    "type": "agent_message",
+                    "text": "Ок, ничего не делаю.",
+                },
+            }
+        )
+
+        self.assertEqual(text_from_json_line(line), "Ок, ничего не делаю.")
+
+    def test_renderer_streams_top_level_turn_usage(self) -> None:
+        line = json.dumps(
+            {
+                "type": "turn.completed",
+                "usage": {
+                    "input_tokens": 3300206,
+                    "cached_input_tokens": 2847488,
+                    "output_tokens": 26526,
+                    "reasoning_output_tokens": 10984,
+                },
+            }
+        )
+
+        self.assertEqual(
+            text_from_json_line(line),
+            "[tokens] input 3.3m, cached 2.8m, output 26.5k, reasoning 11k",
+        )
+
     def test_renderer_streams_tool_call_and_output_activity(self) -> None:
         call_line = json_line(
             "response_item",
@@ -236,6 +279,7 @@ class CodexStreamTests(unittest.TestCase):
         )
 
         self.assertIsNone(text_from_json_line(line))
+        self.assertIsNone(CodexStreamRenderer().render_line(line))
 
     def test_codex_exec_command_uses_json_mode_for_new_prompt(self) -> None:
         command = codex_exec_command(Path("/tmp/codex"), prompt="Fix the bug", resume_id=None)
