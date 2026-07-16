@@ -156,17 +156,19 @@ class TuiApp:
         preview_x = list_width + 2
         preview_width = max(1, width - preview_x)
         body_height = height - 4
+        preview_height = body_height - 1
         self.keep_selected_visible(visible_session_count(body_height))
+        preview_scroll = self.preview_scroll_label(preview_width, preview_height)
 
         sessions_attr = theme.pane_active if self.focus == "sessions" else theme.pane_inactive
         preview_attr = theme.pane_active if self.focus == "preview" else theme.pane_inactive
         add_text(stdscr, 1, 0, "Sessions", list_width, sessions_attr)
-        add_text(stdscr, 1, preview_x, f"Preview: {self.mode}", preview_width, preview_attr)
+        add_text(stdscr, 1, preview_x, f"Preview: {self.mode} | {preview_scroll}", preview_width, preview_attr)
         for y in range(1, height - 2):
             add_text(stdscr, y, list_width, "|", 2, theme.divider)
 
         self.draw_sessions(list_width, body_height)
-        self.draw_preview(preview_x, 2, preview_width, body_height - 1)
+        self.draw_preview(preview_x, 2, preview_width, preview_height)
 
         if self.threads:
             help_text = "tab focus | arrows move/scroll | enter resume | n new | r refresh | v/a/f/u/o modes | q quit"
@@ -216,6 +218,12 @@ class TuiApp:
                 break
             add_text(self.stdscr, row, x, line, width, attr)
             row += 1
+
+    def preview_scroll_label(self, width: int, height: int) -> str:
+        lines = self.empty_preview_lines() if not self.threads else self.preview_lines(self.selected_thread(), width)
+        wrapped = wrap_lines(lines, width)
+        self.preview_top = clamped_scroll_top(len(wrapped), height, self.preview_top)
+        return scroll_position_label(len(wrapped), height, self.preview_top)
 
     def preview_lines(self, thread: ThreadRow, width: int | None = None) -> list[str]:
         cache_width = max(0, width or 0)
@@ -592,6 +600,18 @@ def visible_lines(lines: list[str], width: int, height: int, top: int) -> list[s
     wrapped = wrap_lines(lines, width)
     start = clamped_scroll_top(len(wrapped), height, top)
     return wrapped[start : start + height]
+
+
+def scroll_position_label(total_lines: int, height: int, top: int) -> str:
+    if total_lines <= 0:
+        return "empty"
+    if height <= 0:
+        return f"line {min(max(0, top) + 1, total_lines)}/{total_lines}"
+    start = clamped_scroll_top(total_lines, height, top)
+    end = min(total_lines, start + height)
+    if total_lines <= height:
+        return f"all {total_lines}"
+    return f"{start + 1}-{end}/{total_lines}"
 
 
 def visible_session_count(height: int) -> int:

@@ -13,6 +13,7 @@ from codex_tui.tui import (
     CursesStreamWriter,
     TuiApp,
     line_attr,
+    scroll_position_label,
     session_row_lines,
     status_line_attr,
     styled_lines,
@@ -218,6 +219,26 @@ class TuiTests(unittest.TestCase):
 
         self.assertEqual(visible_lines(lines, width=20, height=2, top=1), ["two", "three"])
         self.assertEqual(visible_lines(lines, width=20, height=2, top=99), ["three", "four"])
+
+    def test_scroll_position_label_summarizes_visible_range(self) -> None:
+        self.assertEqual(scroll_position_label(0, height=5, top=0), "empty")
+        self.assertEqual(scroll_position_label(3, height=5, top=0), "all 3")
+        self.assertEqual(scroll_position_label(20, height=7, top=5), "6-12/20")
+        self.assertEqual(scroll_position_label(20, height=7, top=99), "14-20/20")
+
+    def test_draw_header_includes_preview_scroll_position(self) -> None:
+        app = TuiApp(
+            [sample_thread()],
+            lambda _thread, _prompt, _stdout: 0,
+            preview_top=5,
+        )
+        app.preview_lines = lambda _thread, _width=None: [f"line {index}" for index in range(20)]  # type: ignore[method-assign]
+        screen = RecordingWindow(height=12, width=80)
+        app.stdscr = screen
+
+        app.draw()
+
+        self.assertEqual(screen.text_at(1, 28), "Preview: chat | 6-12/20")
 
     def test_visible_session_count_tracks_two_line_rows(self) -> None:
         self.assertEqual(visible_session_count(1), 1)
@@ -476,8 +497,19 @@ class FakeScreen:
 
 
 class RecordingWindow:
-    def __init__(self) -> None:
+    def __init__(self, height: int = 24, width: int = 80) -> None:
         self.writes: list[tuple[int, int, str, int]] = []
+        self.height = height
+        self.width = width
+
+    def getmaxyx(self) -> tuple[int, int]:
+        return (self.height, self.width)
+
+    def erase(self) -> None:
+        self.writes.clear()
+
+    def refresh(self) -> None:
+        return None
 
     def addnstr(self, y: int, x: int, text: str, _limit: int, attr: int = 0) -> None:
         self.writes.append((y, x, text, attr))
