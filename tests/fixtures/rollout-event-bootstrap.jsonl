@@ -1,0 +1,4 @@
+{"timestamp":"2026-07-10T12:00:00.000Z","type":"session_meta","payload":{"id":"019f-test-event-bootstrap","cwd":"/tmp/project","source":"cli"}}
+{"timestamp":"2026-07-10T12:00:01.000Z","type":"event_msg","payload":{"type":"user_message","message":"# AGENTS.md instructions for /tmp/project\n\n<environment_context>hidden bootstrap</environment_context>","images":[]}}
+{"timestamp":"2026-07-10T12:00:02.000Z","type":"event_msg","payload":{"type":"user_message","message":"Show me the final answer","images":[]}}
+{"timestamp":"2026-07-10T12:00:03.000Z","type":"event_msg","payload":{"type":"agent_message","phase":"final_answer","message":"Here is the final answer."}}

@@ -10,6 +10,9 @@ from typing import Iterable
 from .models import ChatMessage, ThreadRow
 
 
+AUTONOMOUS_STATUS_KEYS = {"success", "summary", "key_changes_made", "key_learnings"}
+
+
 def read_messages(path: Path) -> list[ChatMessage]:
     event_messages: list[ChatMessage] = []
     fallback_user: list[ChatMessage] = []
@@ -32,13 +35,14 @@ def read_messages(path: Path) -> list[ChatMessage]:
                 payload_type = payload.get("type")
                 if payload_type == "user_message":
                     text = text_from_payload(payload)
-                    if text:
-                        event_messages.append(ChatMessage(timestamp, "user", "", text))
+                    if text and not looks_like_bootstrap_context(text):
+                        event_messages.append(ChatMessage(timestamp, "user", "", clean_user_text(text)))
                 elif payload_type == "agent_message":
                     text = text_from_payload(payload)
                     if text:
                         phase = str(payload.get("phase") or "")
-                        event_messages.append(ChatMessage(timestamp, "assistant", phase, text))
+                        if not looks_like_autonomous_status_update(text, phase):
+                            event_messages.append(ChatMessage(timestamp, "assistant", phase, text))
                 elif payload_type == "task_complete":
                     text = str(payload.get("last_agent_message") or "")
                     if text:
@@ -50,9 +54,10 @@ def read_messages(path: Path) -> list[ChatMessage]:
                     continue
                 phase = str(payload.get("phase") or "")
                 if role == "assistant":
-                    fallback_assistant.append(ChatMessage(timestamp, "assistant", phase, text))
+                    if not looks_like_autonomous_status_update(text, phase):
+                        fallback_assistant.append(ChatMessage(timestamp, "assistant", phase, text))
                 elif role == "user" and not looks_like_bootstrap_context(text):
-                    fallback_user.append(ChatMessage(timestamp, "user", phase, text))
+                    fallback_user.append(ChatMessage(timestamp, "user", phase, clean_user_text(text)))
     has_event_assistant = any(message.role == "assistant" for message in event_messages)
     has_event_user = any(message.role == "user" for message in event_messages)
     messages: list[ChatMessage] = []
@@ -98,6 +103,38 @@ def text_from_payload(payload: dict[str, object]) -> str:
 def looks_like_bootstrap_context(text: str) -> bool:
     stripped = text.lstrip()
     return stripped.startswith("# AGENTS.md instructions") or "<environment_context>" in stripped
+
+
+def looks_like_autonomous_status_update(text: str, phase: str) -> bool:
+    if phase == "final_answer":
+        return False
+    stripped = text.strip()
+    if not stripped.startswith("{"):
+        return False
+    try:
+        value = json.loads(stripped)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(value, dict) and AUTONOMOUS_STATUS_KEYS.issubset(value)
+
+
+def clean_user_text(text: str) -> str:
+    return unwrap_autonomous_objective(text)
+
+
+def clean_metadata_text(text: str) -> str:
+    return unwrap_autonomous_objective(text)
+
+
+def unwrap_autonomous_objective(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("You are working autonomously towards an objective given below."):
+        return text
+    match = re.search(r"(?ms)^## Objective\s*\n+(.*)\Z", stripped)
+    if not match:
+        return text
+    objective = match.group(1).strip()
+    return objective or text
 
 
 def has_similar_message(messages: Iterable[ChatMessage], candidate: ChatMessage) -> bool:
@@ -163,9 +200,29 @@ def render_thread(
         if color:
             header = colorize_header(header, message.role, message.phase)
         lines.append(header)
-        lines.append(textwrap.indent(message.text.rstrip(), "  "))
+        lines.append(textwrap.indent(render_message_text(message), "  "))
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def render_message_text(message: ChatMessage) -> str:
+    text = message.text.rstrip()
+    if message.role == "assistant":
+        return pretty_json_text(text)
+    return text
+
+
+def pretty_json_text(text: str) -> str:
+    stripped = text.strip()
+    if not stripped or stripped[0] not in "{[":
+        return text
+    try:
+        value = json.loads(stripped)
+    except json.JSONDecodeError:
+        return text
+    if not isinstance(value, (dict, list)):
+        return text
+    return json.dumps(value, ensure_ascii=False, indent=2)
 
 
 def role_label(message: ChatMessage) -> str:

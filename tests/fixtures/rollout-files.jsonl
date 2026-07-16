@@ -1,0 +1,4 @@
+{"timestamp":"2026-07-10T11:00:00.000Z","type":"session_meta","payload":{"id":"019f-test-files","cwd":"/tmp/project","source":"cli"}}
+{"timestamp":"2026-07-10T11:00:01.000Z","type":"event_msg","payload":{"type":"user_message","message":"Please inspect `src/app.py:7` and pyproject.toml.","images":[]}}
+{"timestamp":"2026-07-10T11:00:02.000Z","type":"event_msg","payload":{"type":"agent_message","phase":"commentary","message":"Changed [src/app.py](/tmp/project/src/app.py:42) and added tests/test_app.py."}}
+{"timestamp":"2026-07-10T11:00:03.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"sed -n '1,80p' src/hidden_tool_call.py\"}","call_id":"call_1"}}

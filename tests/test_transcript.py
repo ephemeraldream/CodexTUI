@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
 import path_bootstrap  # noqa: F401
 
-from codex_plus.models import ThreadRow
-from codex_plus.transcript import filter_messages, read_messages, render_thread
+from codex_tui.models import ThreadRow
+from codex_tui.transcript import filter_messages, read_messages, render_thread
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -34,6 +36,90 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual(messages[0].text, "Run the autonomous iteration")
         self.assertEqual(messages[1].text, '{"success": true}')
 
+    def test_event_user_messages_skip_bootstrap_context(self) -> None:
+        messages = read_messages(FIXTURES / "rollout-event-bootstrap.jsonl")
+        self.assertEqual([message.role for message in messages], ["user", "assistant"])
+        self.assertEqual(messages[0].text, "Show me the final answer")
+        self.assertNotIn("hidden bootstrap", "\n".join(message.text for message in messages))
+
+    def test_autonomous_objective_wrapper_collapses_to_objective(self) -> None:
+        prompt = autonomous_prompt("Ship a keyboard-only CLI wrapper.")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-autonomous", "cwd": "/tmp/project", "source": "cli"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "event_msg",
+                    "payload": {"type": "user_message", "message": prompt, "images": []},
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            messages = read_messages(path)
+
+        self.assertEqual([message.role for message in messages], ["user"])
+        self.assertEqual(messages[0].text, "Ship a keyboard-only CLI wrapper.")
+        self.assertNotIn("This is iteration", messages[0].text)
+
+    def test_autonomous_status_updates_are_hidden_but_final_json_remains(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-status", "cwd": "/tmp/project", "source": "exec"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "event_msg",
+                    "payload": {"type": "user_message", "message": "Run the autonomous iteration", "images": []},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:02.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "agent_message",
+                        "phase": "commentary",
+                        "message": json.dumps(
+                            {
+                                "success": True,
+                                "summary": "checking notes",
+                                "key_changes_made": [],
+                                "key_learnings": [],
+                            }
+                        ),
+                    },
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:03.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "agent_message",
+                        "phase": "final_answer",
+                        "message": json.dumps(
+                            {
+                                "success": True,
+                                "summary": "completed iteration",
+                                "key_changes_made": ["hidden status updates"],
+                                "key_learnings": [],
+                            }
+                        ),
+                    },
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            messages = read_messages(path)
+
+        self.assertEqual([message.role for message in messages], ["user", "assistant"])
+        self.assertEqual(messages[1].phase, "final_answer")
+        self.assertNotIn("checking notes", "\n".join(message.text for message in messages))
+        self.assertIn("completed iteration", messages[1].text)
+
     def test_render_thread_includes_header_and_messages(self) -> None:
         thread = ThreadRow(
             id="019f-test-basic",
@@ -53,6 +139,59 @@ class TranscriptTests(unittest.TestCase):
         self.assertIn("I will inspect the failing path.", rendered)
         self.assertIn("The bug is fixed.", rendered)
         self.assertNotIn("Find the bug\n\n[", rendered)
+
+    def test_render_thread_pretty_prints_assistant_json_answers(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-json", "cwd": "/tmp/project", "source": "exec"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "agent_message",
+                        "phase": "final_answer",
+                        "message": '{"success":true,"key_changes_made":["clean JSON rendering"]}',
+                    },
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            thread = ThreadRow(
+                id="019f-test-json",
+                title="Structured result",
+                cwd="/tmp/project",
+                source="exec",
+                archived=False,
+                rollout_path=str(path),
+                created_at_ms=1783677600000,
+                updated_at_ms=1783677605000,
+                recency_at_ms=1783677605000,
+                preview="",
+                first_user_message="",
+            )
+
+            rendered = render_thread(thread, mode="final")
+
+        self.assertIn('  "success": true', rendered)
+        self.assertIn('  "key_changes_made": [', rendered)
+        self.assertNotIn('{"success":true,"key_changes_made"', rendered)
+
+
+def autonomous_prompt(objective: str) -> str:
+    return (
+        "You are working autonomously towards an objective given below.\n"
+        "This is iteration 7. Each iteration aims to make an incremental step forward.\n\n"
+        "## Instructions\n\n"
+        "1. Read notes first.\n\n"
+        "## Output\n\n"
+        "- success\n\n"
+        "## Objective\n\n"
+        f"{objective}"
+    )
 
 
 if __name__ == "__main__":

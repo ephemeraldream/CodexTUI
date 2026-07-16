@@ -24,3 +24,10 @@ class ChatMessage:
     role: str
     phase: str
     text: str
+
+
+@dataclass(frozen=True)
+class SearchMatch:
+    thread: ThreadRow
+    role: str
+    snippet: str
