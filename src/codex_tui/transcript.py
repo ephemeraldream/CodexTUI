@@ -283,6 +283,10 @@ def one_line(value: str) -> str:
 
 def truncate(value: str, width: int) -> str:
     clean = one_line(value)
+    if width <= 0:
+        return ""
     if len(clean) <= width:
         return clean
-    return clean[: max(0, width - 1)] + "..."
+    if width <= 3:
+        return "." * width
+    return clean[: width - 3] + "..."

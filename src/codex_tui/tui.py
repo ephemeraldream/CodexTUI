@@ -11,7 +11,10 @@ from .models import ThreadRow
 from .paths import real_codex_bin
 from .store import CodexStore
 from .theme import TuiTheme, build_curses_theme
-from .transcript import render_thread, short_id, truncate
+from .transcript import format_ms, render_thread, short_id, truncate
+
+
+SESSION_ROW_HEIGHT = 2
 
 
 class StreamOutput(Protocol):
@@ -153,7 +156,7 @@ class TuiApp:
         preview_x = list_width + 2
         preview_width = max(1, width - preview_x)
         body_height = height - 4
-        self.keep_selected_visible(body_height - 2)
+        self.keep_selected_visible(visible_session_count(body_height))
 
         sessions_attr = theme.pane_active if self.focus == "sessions" else theme.pane_inactive
         preview_attr = theme.pane_active if self.focus == "preview" else theme.pane_inactive
@@ -187,14 +190,20 @@ class TuiApp:
             add_text(self.stdscr, 3, 0, "Press n for new prompt.", width)
             add_text(self.stdscr, 4, 0, "Press r to refresh.", width)
             return
-        end = min(len(self.threads), self.top + max(1, height - 1))
-        for row, idx in enumerate(range(self.top, end), start=2):
+        end = min(len(self.threads), self.top + visible_session_count(height))
+        row = 2
+        end_y = 2 + max(0, height)
+        for idx in range(self.top, end):
             thread = self.threads[idx]
             marker = ">" if idx == self.selected else " "
-            title = truncate(thread.title or thread.first_user_message or thread.preview or "(untitled)", width - 12)
-            line = f"{marker} {short_id(thread.id)} {title}"
-            attr = theme.selection if idx == self.selected else 0
-            add_text(self.stdscr, row, 0, line, width, attr)
+            title_line, metadata_line = session_row_lines(thread, marker, width)
+            selected = idx == self.selected
+            title_attr = theme.selection if selected else 0
+            metadata_attr = theme.selection if selected else theme.status_muted
+            add_text(self.stdscr, row, 0, title_line, width, title_attr)
+            if row + 1 < end_y:
+                add_text(self.stdscr, row + 1, 0, metadata_line, width, metadata_attr)
+            row += SESSION_ROW_HEIGHT
 
     def draw_preview(self, x: int, y: int, width: int, height: int) -> None:
         lines = self.empty_preview_lines() if not self.threads else self.preview_lines(self.selected_thread(), width)
@@ -560,6 +569,33 @@ def visible_lines(lines: list[str], width: int, height: int, top: int) -> list[s
     wrapped = wrap_lines(lines, width)
     start = clamped_scroll_top(len(wrapped), height, top)
     return wrapped[start : start + height]
+
+
+def visible_session_count(height: int) -> int:
+    return max(1, height // SESSION_ROW_HEIGHT)
+
+
+def session_row_lines(thread: ThreadRow, marker: str, width: int) -> tuple[str, str]:
+    title = thread.title or thread.first_user_message or thread.preview or "(untitled)"
+    title_line = prefixed_session_line(f"{marker} ", title, width)
+    metadata_line = prefixed_session_line("  ", session_metadata(thread), width)
+    return title_line, metadata_line
+
+
+def prefixed_session_line(prefix: str, text: str, width: int) -> str:
+    usable_width = max(1, width - 1)
+    if usable_width <= len(prefix):
+        return prefix[:usable_width]
+    return f"{prefix}{truncate(text, usable_width - len(prefix))}"
+
+
+def session_metadata(thread: ThreadRow) -> str:
+    parts = [short_id(thread.id), thread.source or "?", format_ms(thread.recency_at_ms)]
+    if thread.archived:
+        parts.append("archived")
+    if thread.cwd:
+        parts.append(thread.cwd)
+    return "  ".join(parts)
 
 
 def clamped_scroll_top(total_lines: int, height: int, requested: int) -> int:

@@ -13,10 +13,12 @@ from codex_tui.tui import (
     CursesStreamWriter,
     TuiApp,
     line_attr,
+    session_row_lines,
     status_line_attr,
     stream_new_prompt,
     stream_selected_thread,
     visible_lines,
+    visible_session_count,
     wrap_lines,
 )
 
@@ -161,6 +163,48 @@ class TuiTests(unittest.TestCase):
 
         self.assertEqual(visible_lines(lines, width=20, height=2, top=1), ["two", "three"])
         self.assertEqual(visible_lines(lines, width=20, height=2, top=99), ["three", "four"])
+
+    def test_visible_session_count_tracks_two_line_rows(self) -> None:
+        self.assertEqual(visible_session_count(1), 1)
+        self.assertEqual(visible_session_count(4), 2)
+        self.assertEqual(visible_session_count(5), 2)
+
+    def test_session_row_lines_include_title_and_scan_metadata(self) -> None:
+        thread = sample_thread("019f-session-row")
+
+        title_line, metadata_line = session_row_lines(thread, ">", width=80)
+
+        self.assertEqual(title_line, "> Build a TUI")
+        self.assertIn("019f-ses", metadata_line)
+        self.assertIn("cli", metadata_line)
+        self.assertIn("/tmp/project", metadata_line)
+
+    def test_session_row_lines_reserve_final_terminal_column(self) -> None:
+        thread = sample_thread("019f-session-width")
+
+        title_line, metadata_line = session_row_lines(thread, ">", width=12)
+
+        self.assertLessEqual(len(title_line), 11)
+        self.assertLessEqual(len(metadata_line), 11)
+
+    def test_draw_sessions_uses_two_line_rows_and_metadata_styling(self) -> None:
+        app = TuiApp(
+            [sample_thread("019f-test-one"), sample_thread("019f-test-two")],
+            lambda _thread, _prompt, _stdout: 0,
+            selected=1,
+            theme=TuiTheme(selection=9, status_muted=4),
+        )
+        screen = RecordingWindow()
+        app.stdscr = screen
+
+        app.draw_sessions(width=42, height=4)
+
+        self.assertEqual(screen.text_at(2, 0), "  Build a TUI")
+        self.assertIn("019f-tes", screen.text_at(3, 0))
+        self.assertEqual(screen.attr_at(3, 0), 4)
+        self.assertEqual(screen.text_at(4, 0), "> Build a TUI")
+        self.assertEqual(screen.attr_at(4, 0), 9)
+        self.assertEqual(screen.attr_at(5, 0), 9)
 
     def test_stream_view_auto_follows_until_user_scrolls(self) -> None:
         app = TuiApp([sample_thread()], lambda _thread, _prompt, _stdout: 0)
@@ -374,6 +418,26 @@ def sample_thread(thread_id: str = "019f-test-tui") -> ThreadRow:
 class FakeScreen:
     def clear(self) -> None:
         return None
+
+
+class RecordingWindow:
+    def __init__(self) -> None:
+        self.writes: list[tuple[int, int, str, int]] = []
+
+    def addnstr(self, y: int, x: int, text: str, _limit: int, attr: int = 0) -> None:
+        self.writes.append((y, x, text, attr))
+
+    def text_at(self, y: int, x: int) -> str:
+        for row, col, text, _attr in self.writes:
+            if row == y and col == x:
+                return text
+        return ""
+
+    def attr_at(self, y: int, x: int) -> int:
+        for row, col, _text, attr in self.writes:
+            if row == y and col == x:
+                return attr
+        return 0
 
 
 class FakeColorCurses:

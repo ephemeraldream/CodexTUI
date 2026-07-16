@@ -8,7 +8,7 @@ from pathlib import Path
 import path_bootstrap  # noqa: F401
 
 from codex_tui.models import ThreadRow
-from codex_tui.transcript import filter_messages, read_messages, render_thread
+from codex_tui.transcript import filter_messages, read_messages, render_thread, truncate
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -237,6 +237,12 @@ class TranscriptTests(unittest.TestCase):
         for row in message_rows:
             if row:
                 self.assertLessEqual(len(row), 35)
+
+    def test_truncate_never_exceeds_requested_width(self) -> None:
+        self.assertEqual(truncate("abcdef", 6), "abcdef")
+        self.assertEqual(truncate("abcdef", 5), "ab...")
+        self.assertEqual(truncate("abcdef", 3), "...")
+        self.assertEqual(truncate("abcdef", 0), "")
 
 
 def autonomous_prompt(objective: str) -> str:
