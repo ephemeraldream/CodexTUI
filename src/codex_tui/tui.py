@@ -320,9 +320,10 @@ class TuiApp:
             stdscr.refresh()
             return
 
-        theme = self.theme
-        add_text(stdscr, 0, 0, " CodexTUI Stream ", width, theme.app_header)
         body_height = height - 3
+        theme = self.theme
+        stream_scroll = self.stream_scroll_label(current_line, width, body_height)
+        add_text(stdscr, 0, 0, f" CodexTUI Stream | {stream_scroll} ", width, theme.app_header)
         for row, (line, attr) in enumerate(self.visible_stream_rows(current_line, width, body_height), start=1):
             add_text(stdscr, row, 0, line, width, attr)
         add_text(
@@ -348,6 +349,14 @@ class TuiApp:
         wrapped = wrap_lines(lines, width)
         start = self.stream_start(len(wrapped), height)
         return styled_lines(wrapped, self.theme)[start : start + height]
+
+    def stream_scroll_label(self, current_line: str | None, width: int, height: int) -> str:
+        lines = list(self.stream_lines)
+        if current_line is not None:
+            lines.append(current_line)
+        wrapped = wrap_lines(lines, width)
+        start = self.stream_start(len(wrapped), height)
+        return scroll_position_label(len(wrapped), height, start)
 
     def stream_start(self, total_lines: int, height: int) -> int:
         requested = total_lines if self.stream_top is None else self.stream_top

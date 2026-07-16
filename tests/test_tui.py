@@ -302,6 +302,20 @@ class TuiTests(unittest.TestCase):
         app.scroll_stream_view(99, width=20, height=2)
         self.assertEqual(app.stream_top, 3)
 
+    def test_draw_stream_header_includes_scroll_position(self) -> None:
+        app = TuiApp(
+            [sample_thread()],
+            lambda _thread, _prompt, _stdout: 0,
+            stream_top=1,
+        )
+        app.stream_lines = ["one", "two", "three", "four", "five", "six"]
+        screen = RecordingWindow(height=7, width=50)
+        app.stdscr = screen
+
+        app.draw_stream()
+
+        self.assertEqual(screen.text_at(0, 0), " CodexTUI Stream | 2-5/6 ")
+
     def test_focus_toggle_moves_arrows_between_sessions_and_preview(self) -> None:
         app = TuiApp(
             [sample_thread("019f-test-one"), sample_thread("019f-test-two")],
