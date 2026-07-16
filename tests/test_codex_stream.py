@@ -281,7 +281,7 @@ class CodexStreamTests(unittest.TestCase):
     def test_renderer_streams_user_message_events(self) -> None:
         line = json_line("event_msg", {"type": "user_message", "message": "Fix the failing test."})
 
-        self.assertEqual(text_from_json_line(line), "[user] Fix the failing test.")
+        self.assertEqual(text_from_json_line(line), "YOU\n  Fix the failing test.")
 
     def test_renderer_cleans_autonomous_user_message_events(self) -> None:
         line = json_line(
@@ -299,7 +299,7 @@ class CodexStreamTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(text_from_json_line(line), "[user] Build a CodexTUI-owned TUI.")
+        self.assertEqual(text_from_json_line(line), "YOU\n  Build a CodexTUI-owned TUI.")
 
     def test_renderer_suppresses_bootstrap_user_message_events(self) -> None:
         line = json_line(

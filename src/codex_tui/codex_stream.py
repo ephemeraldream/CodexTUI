@@ -189,7 +189,7 @@ def render_user_message(payload: dict[str, object]) -> str | None:
     text = text_from_payload(payload)
     if not text or looks_like_bootstrap_context(text):
         return None
-    return f"[user] {compact_value(clean_user_text(text), limit=800)}"
+    return f"YOU\n  {compact_value(clean_user_text(text), limit=800)}"
 
 
 def text_from_response_item(
