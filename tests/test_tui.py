@@ -152,6 +152,7 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(line_attr("[tool] exec_command: python3 -m unittest", theme), 60)
         self.assertEqual(line_attr("[tokens] input 10k, output 2k", theme), 40)
         self.assertEqual(line_attr("[task] Codex turn failed: auth expired", theme), 50)
+        self.assertEqual(line_attr("[task] Codex turn aborted: interrupted", theme), 50)
         self.assertEqual(line_attr("```python", theme), 70)
         self.assertEqual(line_attr("~~~python", theme), 70)
         self.assertEqual(line_attr("ordinary assistant text", theme), 0)
@@ -193,6 +194,29 @@ class TuiTests(unittest.TestCase):
                 ("[tool output] exec_command", 60),
                 ("2 failed, 1 passed", 70),
                 ("see tests/test_app.py", 70),
+                ("[task] Stream finished.", 40),
+            ],
+        )
+
+    def test_styled_lines_styles_error_activity_details_until_next_block(self) -> None:
+        theme = TuiTheme(status_error=50, status_muted=40, tool_header=60)
+
+        rows = styled_lines(
+            [
+                "[tool] apply_patch failed: app.py",
+                "patch does not apply",
+                "line 14 mismatch",
+                "[task] Stream finished.",
+            ],
+            theme,
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                ("[tool] apply_patch failed: app.py", 50),
+                ("patch does not apply", 50),
+                ("line 14 mismatch", 50),
                 ("[task] Stream finished.", 40),
             ],
         )

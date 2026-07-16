@@ -724,20 +724,32 @@ def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
     result: list[tuple[str, int]] = []
     in_code_block = False
     in_tool_output = False
+    in_error_activity = False
     for line in lines:
         stripped = line.strip()
         fence = is_code_fence(stripped)
         starts_tool_output = stripped.startswith("[tool output]")
+        starts_error_activity = is_error_activity(stripped)
         starts_new_block = is_activity_header(stripped) or is_any_role_header(stripped)
         if starts_new_block and not starts_tool_output:
             in_tool_output = False
+        if starts_new_block and not starts_error_activity:
+            in_error_activity = False
+        if not stripped:
+            in_error_activity = False
         if in_code_block or fence:
             attr = theme.code
         elif starts_tool_output:
             attr = line_attr(line, theme)
             in_tool_output = True
+            in_error_activity = False
+        elif starts_error_activity:
+            attr = line_attr(line, theme)
+            in_error_activity = True
         elif in_tool_output:
             attr = theme.code
+        elif in_error_activity:
+            attr = theme.status_error
         else:
             attr = line_attr(line, theme)
         result.append((line, attr))
@@ -801,7 +813,7 @@ def is_error_activity(line: str) -> bool:
     if not line.startswith(("[task]", "[tool]", "[tool output]", "[item]")):
         return False
     lowered = line.casefold()
-    return any(marker in lowered for marker in ("failed", "error", "exited with status"))
+    return any(marker in lowered for marker in ("failed", "error", "exited with status", "aborted"))
 
 
 def wrap_lines(lines: list[str], width: int) -> list[str]:
