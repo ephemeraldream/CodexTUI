@@ -180,7 +180,7 @@ class TuiApp:
         self.draw_sessions(list_width, body_height)
         self.draw_preview(preview_x, 2, preview_width, preview_height)
 
-        add_text(stdscr, height - 2, 0, footer_help(self.focus, has_threads=bool(self.threads)), width, theme.footer)
+        add_text(stdscr, height - 2, 0, footer_help(self.focus, has_threads=bool(self.threads), width=width), width, theme.footer)
         add_text(stdscr, height - 1, 0, self.status, width, status_line_attr(self.status, theme))
         stdscr.refresh()
 
@@ -359,7 +359,7 @@ class TuiApp:
             stdscr,
             height - 2,
             0,
-            stream_footer_help(self.stream_command_label, reviewing=self.stream_reviewing),
+            stream_footer_help(self.stream_command_label, reviewing=self.stream_reviewing, width=width),
             width,
             theme.footer,
         )
@@ -584,10 +584,36 @@ def stream_header(context_label: str, scroll_label: str, width: int) -> str:
     return fit_header(f"Stream | {scroll_label}", width)
 
 
-def stream_footer_help(command_label: str, *, reviewing: bool) -> str:
+def stream_footer_help(command_label: str, *, reviewing: bool, width: int | None = None) -> str:
+    short_label = stream_command_short_label(command_label)
     if reviewing:
-        return f"{command_label} | review: arrows/PgUp/PgDn scroll | enter/q return"
-    return f"{command_label} | live: capturing output"
+        return fit_footer(
+            [
+                f"{command_label} | review: arrows/PgUp/PgDn scroll | enter/q return",
+                f"{command_label} | review: scroll | enter/q return",
+                f"{short_label} | review: arrows/PgUp/PgDn | enter/q",
+                f"{short_label} | review scroll | enter/q",
+                f"{short_label} | enter/q",
+            ],
+            width,
+        )
+    return fit_footer(
+        [
+            f"{command_label} | live: capturing output",
+            f"{command_label} | live capture",
+            f"{short_label} | live capture",
+            f"{short_label} | live",
+        ],
+        width,
+    )
+
+
+def stream_command_short_label(command_label: str) -> str:
+    if "resume" in command_label.split():
+        return "resume"
+    if command_label.startswith("codex exec"):
+        return "exec"
+    return command_label
 
 
 def stream_completion_line(status: str) -> str:
@@ -604,12 +630,47 @@ def preview_mode_tabs(active_mode: str) -> str:
     return " ".join(f"[{label}]" if mode == active_mode else label for mode, label in PREVIEW_MODE_TABS)
 
 
-def footer_help(focus: str, *, has_threads: bool) -> str:
+def footer_help(focus: str, *, has_threads: bool, width: int | None = None) -> str:
     if not has_threads:
-        return "n new prompt | r refresh | q quit | ctui doctor for setup"
+        return fit_footer(
+            [
+                "n new prompt | r refresh | q quit | ctui doctor for setup",
+                "n new | r refresh | q quit | doctor",
+                "n new | r refresh | q quit",
+                "n/r/q",
+            ],
+            width,
+        )
     if focus == "preview":
-        return "preview: arrows/PgUp/PgDn scroll | v chat | a assistant | f final | u user | o files | tab sessions | q quit"
-    return "sessions: arrows select | enter resume | n new | r refresh | tab preview | q quit"
+        return fit_footer(
+            [
+                "preview: arrows/PgUp/PgDn scroll | v chat | a assistant | f final | u user | o files | tab sessions | q quit",
+                "preview: scroll | v chat | a asst | f final | u user | o files | tab | q quit",
+                "scroll | modes v/a/f/u/o | tab | q",
+                "preview | scroll | tab | q",
+            ],
+            width,
+        )
+    return fit_footer(
+        [
+            "sessions: arrows select | enter resume | n new | r refresh | tab preview | q quit",
+            "sessions: up/down | enter resume | n new | r refresh | tab preview | q quit",
+            "up/down | enter resume | n new | tab | q",
+            "sessions | enter | n | tab | q",
+        ],
+        width,
+    )
+
+
+def fit_footer(variants: list[str], width: int | None) -> str:
+    if not variants:
+        return ""
+    if width is None:
+        return variants[0]
+    for variant in variants:
+        if fits_terminal_width(variant, width):
+            return variant
+    return fit_header(variants[-1], width)
 
 
 def fit_header(text: str, width: int) -> str:

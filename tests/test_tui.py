@@ -289,6 +289,15 @@ class TuiTests(unittest.TestCase):
             "codex exec resume --json | review: arrows/PgUp/PgDn scroll | enter/q return",
         )
 
+    def test_stream_footer_uses_width_aware_variants(self) -> None:
+        review_footer = stream_footer_help("codex exec resume --json", reviewing=True, width=50)
+        live_footer = stream_footer_help("codex exec --json", reviewing=False, width=30)
+
+        self.assertEqual(review_footer, "resume | review: arrows/PgUp/PgDn | enter/q")
+        self.assertEqual(live_footer, "exec | live capture")
+        self.assertLessEqual(len(review_footer), 49)
+        self.assertLessEqual(len(live_footer), 29)
+
     def test_stream_completion_line_is_task_status_activity(self) -> None:
         theme = TuiTheme(status_muted=4, status_error=8)
 
@@ -308,6 +317,41 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(
             footer_help("sessions", has_threads=False),
             "n new prompt | r refresh | q quit | ctui doctor for setup",
+        )
+
+    def test_footer_help_uses_width_aware_variants(self) -> None:
+        sessions_footer = footer_help("sessions", has_threads=True, width=80)
+        preview_footer = footer_help("preview", has_threads=True, width=80)
+        narrow_preview_footer = footer_help("preview", has_threads=True, width=50)
+
+        self.assertEqual(
+            sessions_footer,
+            "sessions: up/down | enter resume | n new | r refresh | tab preview | q quit",
+        )
+        self.assertEqual(
+            preview_footer,
+            "preview: scroll | v chat | a asst | f final | u user | o files | tab | q quit",
+        )
+        self.assertEqual(narrow_preview_footer, "scroll | modes v/a/f/u/o | tab | q")
+        self.assertLessEqual(len(sessions_footer), 79)
+        self.assertLessEqual(len(preview_footer), 79)
+        self.assertLessEqual(len(narrow_preview_footer), 49)
+
+    def test_draw_footer_uses_terminal_width(self) -> None:
+        app = TuiApp(
+            [sample_thread()],
+            lambda _thread, _prompt, _stdout: 0,
+            focus="preview",
+        )
+        app.preview_lines = lambda _thread, _width=None: ["conversation"]  # type: ignore[method-assign]
+        screen = RecordingWindow(height=12, width=80)
+        app.stdscr = screen
+
+        app.draw()
+
+        self.assertEqual(
+            screen.text_at(10, 0),
+            "preview: scroll | v chat | a asst | f final | u user | o files | tab | q quit",
         )
 
     def test_draw_header_includes_session_scroll_position(self) -> None:
