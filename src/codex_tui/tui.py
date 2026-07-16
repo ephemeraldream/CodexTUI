@@ -50,6 +50,7 @@ class TuiApp:
     preview_cache: dict[tuple[str, str, int], list[str]] = field(default_factory=dict)
     stream_lines: list[str] = field(default_factory=list)
     stream_top: int | None = None
+    stream_reviewing: bool = False
     stream_command_label: str = "codex exec resume --json"
     stream_context_label: str = "resume"
     theme: TuiTheme = field(default_factory=TuiTheme)
@@ -304,6 +305,7 @@ class TuiApp:
 
     def stream_prompt(self, *, context_label: str, command_label: str, runner: Callable[[StreamOutput], int]) -> int:
         self.stream_top = None
+        self.stream_reviewing = False
         self.stream_command_label = command_label
         self.stream_context_label = context_label
         self.stream_lines = []
@@ -313,9 +315,11 @@ class TuiApp:
         code = runner(writer)
         writer.close_line()
         self.status = "Stream finished." if code == 0 else f"Stream exited with status {code}."
-        self.stream_lines.extend(["", f"{self.status} Arrows/PageUp/PageDown scroll, Enter/q returns."])
+        self.stream_reviewing = True
+        self.stream_lines.extend(["", stream_completion_line(self.status)])
         self.draw_stream()
         self.review_stream()
+        self.stream_reviewing = False
         return code
 
     def refresh_after_new_stream(self, code: int) -> None:
@@ -355,7 +359,7 @@ class TuiApp:
             stdscr,
             height - 2,
             0,
-            f"{self.stream_command_label} | output captured by CodexTUI | scroll after finish",
+            stream_footer_help(self.stream_command_label, reviewing=self.stream_reviewing),
             width,
             theme.footer,
         )
@@ -578,6 +582,16 @@ def stream_header(context_label: str, scroll_label: str, width: int) -> str:
     if fits_terminal_width(compact, width):
         return compact
     return fit_header(f"Stream | {scroll_label}", width)
+
+
+def stream_footer_help(command_label: str, *, reviewing: bool) -> str:
+    if reviewing:
+        return f"{command_label} | review: arrows/PgUp/PgDn scroll | enter/q return"
+    return f"{command_label} | live: capturing output"
+
+
+def stream_completion_line(status: str) -> str:
+    return f"[task] {status} Review output: arrows/PageUp/PageDown scroll, Enter/q returns."
 
 
 def stream_session_label(thread: ThreadRow) -> str:

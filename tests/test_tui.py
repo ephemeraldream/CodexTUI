@@ -20,6 +20,8 @@ from codex_tui.tui import (
     scroll_position_label,
     session_row_lines,
     status_line_attr,
+    stream_completion_line,
+    stream_footer_help,
     stream_header,
     styled_lines,
     stream_new_prompt,
@@ -276,6 +278,26 @@ class TuiTests(unittest.TestCase):
             stream_header("resume 019f-test Build a TUI", "2-5/6", width=50),
             " CodexTUI Stream | resume 019f-test B... | 2-5/6 ",
         )
+
+    def test_stream_footer_tracks_live_and_review_state(self) -> None:
+        self.assertEqual(
+            stream_footer_help("codex exec --json", reviewing=False),
+            "codex exec --json | live: capturing output",
+        )
+        self.assertEqual(
+            stream_footer_help("codex exec resume --json", reviewing=True),
+            "codex exec resume --json | review: arrows/PgUp/PgDn scroll | enter/q return",
+        )
+
+    def test_stream_completion_line_is_task_status_activity(self) -> None:
+        theme = TuiTheme(status_muted=4, status_error=8)
+
+        self.assertEqual(
+            stream_completion_line("Stream finished."),
+            "[task] Stream finished. Review output: arrows/PageUp/PageDown scroll, Enter/q returns.",
+        )
+        self.assertEqual(line_attr(stream_completion_line("Stream finished."), theme), 4)
+        self.assertEqual(line_attr(stream_completion_line("Stream exited with status 1."), theme), 8)
 
     def test_footer_help_tracks_focus_and_empty_state(self) -> None:
         self.assertEqual(
@@ -609,9 +631,11 @@ class TuiTests(unittest.TestCase):
 
         self.assertEqual(prompts, ["Start fresh"])
         self.assertEqual(app.stream_context_label, "new prompt")
+        self.assertFalse(app.stream_reviewing)
         self.assertNotIn("CodexTUI streaming a new prompt via codex exec --json", app.stream_lines)
         self.assertEqual(app.stream_command_label, "codex exec --json")
         self.assertIn("new answer", app.stream_lines)
+        self.assertIn(stream_completion_line("Stream finished."), app.stream_lines)
         self.assertEqual(app.threads, refreshed)
         self.assertEqual(app.selected, 0)
         self.assertEqual(app.top, 0)
@@ -641,6 +665,7 @@ class TuiTests(unittest.TestCase):
         self.assertNotIn("CodexTUI streaming 019f-tes via codex exec resume --json", app.stream_lines)
         self.assertEqual(app.stream_command_label, "codex exec resume --json")
         self.assertIn("resume answer", app.stream_lines)
+        self.assertIn(stream_completion_line("Stream finished."), app.stream_lines)
 
 
 def sample_thread(thread_id: str = "019f-test-tui") -> ThreadRow:
