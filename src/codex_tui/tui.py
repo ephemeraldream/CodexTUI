@@ -10,6 +10,7 @@ from .file_nav import file_hits_for_thread, render_file_hits
 from .models import ThreadRow
 from .paths import real_codex_bin
 from .store import CodexStore
+from .theme import TuiTheme, build_curses_theme
 from .transcript import render_thread, short_id, truncate
 
 
@@ -40,6 +41,7 @@ class TuiApp:
     stream_lines: list[str] = field(default_factory=list)
     stream_top: int | None = None
     stream_command_label: str = "codex exec resume --json"
+    theme: TuiTheme = field(default_factory=TuiTheme)
 
     def run(self, stdscr: object) -> int:
         import curses
@@ -49,6 +51,7 @@ class TuiApp:
         curses.cbreak()
         curses.noecho()
         safe_curs_set(curses, 0)
+        self.theme = build_curses_theme(curses)
         stdscr.keypad(True)
         while True:
             self.draw()
@@ -136,7 +139,6 @@ class TuiApp:
         self.status = f"Refreshed {len(self.threads)} sessions."
 
     def draw(self) -> None:
-        curses = self.curses
         stdscr = self.stdscr
         height, width = stdscr.getmaxyx()
         stdscr.erase()
@@ -145,19 +147,20 @@ class TuiApp:
             stdscr.refresh()
             return
 
-        add_text(stdscr, 0, 0, " CodexTUI ", width, curses.A_REVERSE)
+        theme = self.theme
+        add_text(stdscr, 0, 0, " CodexTUI ", width, theme.app_header)
         list_width = max(26, min(44, width // 3))
         preview_x = list_width + 2
         preview_width = max(1, width - preview_x)
         body_height = height - 4
         self.keep_selected_visible(body_height - 2)
 
-        sessions_attr = curses.A_REVERSE if self.focus == "sessions" else curses.A_BOLD
-        preview_attr = curses.A_REVERSE if self.focus == "preview" else curses.A_BOLD
+        sessions_attr = theme.pane_active if self.focus == "sessions" else theme.pane_inactive
+        preview_attr = theme.pane_active if self.focus == "preview" else theme.pane_inactive
         add_text(stdscr, 1, 0, "Sessions", list_width, sessions_attr)
         add_text(stdscr, 1, preview_x, f"Preview: {self.mode}", preview_width, preview_attr)
         for y in range(1, height - 2):
-            add_text(stdscr, y, list_width, "|", 1)
+            add_text(stdscr, y, list_width, "|", 2, theme.divider)
 
         self.draw_sessions(list_width, body_height)
         self.draw_preview(preview_x, 2, preview_width, body_height - 1)
@@ -166,8 +169,8 @@ class TuiApp:
             help_text = "tab focus | arrows move/scroll | enter resume | n new | r refresh | v/a/f/u/o modes | q quit"
         else:
             help_text = "n new prompt | r refresh | q quit | run ctui doctor if Codex is not ready"
-        add_text(stdscr, height - 2, 0, help_text, width, curses.A_REVERSE)
-        add_text(stdscr, height - 1, 0, self.status, width)
+        add_text(stdscr, height - 2, 0, help_text, width, theme.footer)
+        add_text(stdscr, height - 1, 0, self.status, width, status_line_attr(self.status, theme))
         stdscr.refresh()
 
     def keep_selected_visible(self, visible_count: int) -> None:
@@ -178,9 +181,9 @@ class TuiApp:
             self.top = self.selected - visible_count + 1
 
     def draw_sessions(self, width: int, height: int) -> None:
-        curses = self.curses
+        theme = self.theme
         if not self.threads:
-            add_text(self.stdscr, 2, 0, "No sessions found.", width, curses.A_BOLD)
+            add_text(self.stdscr, 2, 0, "No sessions found.", width, theme.pane_inactive)
             add_text(self.stdscr, 3, 0, "Press n for new prompt.", width)
             add_text(self.stdscr, 4, 0, "Press r to refresh.", width)
             return
@@ -190,7 +193,7 @@ class TuiApp:
             marker = ">" if idx == self.selected else " "
             title = truncate(thread.title or thread.first_user_message or thread.preview or "(untitled)", width - 12)
             line = f"{marker} {short_id(thread.id)} {title}"
-            attr = curses.A_REVERSE if idx == self.selected else 0
+            attr = theme.selection if idx == self.selected else 0
             add_text(self.stdscr, row, 0, line, width, attr)
 
     def draw_preview(self, x: int, y: int, width: int, height: int) -> None:
@@ -202,7 +205,7 @@ class TuiApp:
         for line in lines:
             if row >= y + height:
                 break
-            add_text(self.stdscr, row, x, line, width)
+            add_text(self.stdscr, row, x, line, width, line_attr(line, self.theme))
             row += 1
 
     def preview_lines(self, thread: ThreadRow, width: int | None = None) -> list[str]:
@@ -292,7 +295,6 @@ class TuiApp:
         self.stream_lines.append(line.rstrip("\n"))
 
     def draw_stream(self, current_line: str | None = None) -> None:
-        curses = self.curses
         stdscr = self.stdscr
         height, width = stdscr.getmaxyx()
         stdscr.erase()
@@ -301,19 +303,20 @@ class TuiApp:
             stdscr.refresh()
             return
 
-        add_text(stdscr, 0, 0, " CodexTUI Stream ", width, curses.A_REVERSE)
+        theme = self.theme
+        add_text(stdscr, 0, 0, " CodexTUI Stream ", width, theme.app_header)
         body_height = height - 3
         for row, line in enumerate(self.visible_stream_lines(current_line, width, body_height), start=1):
-            add_text(stdscr, row, 0, line, width)
+            add_text(stdscr, row, 0, line, width, line_attr(line, theme))
         add_text(
             stdscr,
             height - 2,
             0,
             f"{self.stream_command_label} | output captured by CodexTUI | scroll after finish",
             width,
-            curses.A_REVERSE,
+            theme.footer,
         )
-        add_text(stdscr, height - 1, 0, self.status, width)
+        add_text(stdscr, height - 1, 0, self.status, width, status_line_attr(self.status, theme))
         stdscr.refresh()
 
     def visible_stream_lines(self, current_line: str | None, width: int, height: int) -> list[str]:
@@ -493,6 +496,43 @@ def add_text(window: object, y: int, x: int, text: str, width: int, attr: int = 
         window.addnstr(y, x, clean, max(0, width - 1), attr)
     except Exception:
         return
+
+
+def line_attr(line: str, theme: TuiTheme) -> int:
+    stripped = line.strip()
+    if is_role_header(stripped, "YOU"):
+        return theme.user_header
+    if is_role_header(stripped, "CODEX final"):
+        return theme.assistant_final_header
+    if is_role_header(stripped, "CODEX"):
+        return theme.assistant_header
+    if is_error_activity(stripped):
+        return theme.status_error
+    if stripped.startswith(("[tool]", "[tool output]", "[search]", "[plan]")):
+        return theme.tool_header
+    if stripped.startswith(("[task]", "[tokens]", "[context]", "[reasoning]", "[thread]", "[item]")):
+        return theme.status_muted
+    if stripped.startswith("```"):
+        return theme.code
+    return 0
+
+
+def status_line_attr(status: str, theme: TuiTheme) -> int:
+    lowered = status.casefold()
+    if any(marker in lowered for marker in ("failed", "exited with status", "unable", "unavailable")):
+        return theme.status_error
+    return theme.status_muted
+
+
+def is_role_header(line: str, role: str) -> bool:
+    return line.startswith("[") and line.endswith(f"  {role}")
+
+
+def is_error_activity(line: str) -> bool:
+    if not line.startswith(("[task]", "[tool]", "[tool output]", "[item]")):
+        return False
+    lowered = line.casefold()
+    return any(marker in lowered for marker in ("failed", "error", "exited with status"))
 
 
 def wrap_lines(lines: list[str], width: int) -> list[str]:

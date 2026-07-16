@@ -8,7 +8,17 @@ from unittest.mock import patch
 import path_bootstrap  # noqa: F401
 
 from codex_tui.models import ThreadRow
-from codex_tui.tui import CursesStreamWriter, TuiApp, stream_new_prompt, stream_selected_thread, visible_lines, wrap_lines
+from codex_tui.theme import TuiTheme, build_curses_theme
+from codex_tui.tui import (
+    CursesStreamWriter,
+    TuiApp,
+    line_attr,
+    status_line_attr,
+    stream_new_prompt,
+    stream_selected_thread,
+    visible_lines,
+    wrap_lines,
+)
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -107,6 +117,44 @@ class TuiTests(unittest.TestCase):
         lines = wrap_lines(["abcdefghij"], width=5)
 
         self.assertEqual(lines, ["abcd", "efgh", "ij"])
+
+    def test_line_attr_styles_roles_and_activity_rows(self) -> None:
+        theme = TuiTheme(
+            user_header=10,
+            assistant_header=20,
+            assistant_final_header=30,
+            status_muted=40,
+            status_error=50,
+            tool_header=60,
+            code=70,
+        )
+
+        self.assertEqual(line_attr("[1] 2026-07-17 10:00:00  YOU", theme), 10)
+        self.assertEqual(line_attr("[2] 2026-07-17 10:00:01  CODEX", theme), 20)
+        self.assertEqual(line_attr("[3] 2026-07-17 10:00:02  CODEX final", theme), 30)
+        self.assertEqual(line_attr("[tool] exec_command: python3 -m unittest", theme), 60)
+        self.assertEqual(line_attr("[tokens] input 10k, output 2k", theme), 40)
+        self.assertEqual(line_attr("[task] Codex turn failed: auth expired", theme), 50)
+        self.assertEqual(line_attr("```python", theme), 70)
+        self.assertEqual(line_attr("ordinary assistant text", theme), 0)
+
+    def test_status_line_attr_marks_failures_prominently(self) -> None:
+        theme = TuiTheme(status_muted=4, status_error=8)
+
+        self.assertEqual(status_line_attr("Streaming response inside CodexTUI.", theme), 4)
+        self.assertEqual(status_line_attr("Stream exited with status 1.", theme), 8)
+
+    def test_curses_theme_uses_available_color_pairs(self) -> None:
+        curses = FakeColorCurses()
+
+        theme = build_curses_theme(curses)
+
+        self.assertTrue(curses.started)
+        self.assertIn((1, curses.COLOR_CYAN, -1), curses.pairs)
+        self.assertIn((5, curses.COLOR_RED, -1), curses.pairs)
+        self.assertEqual(theme.user_header, curses.A_BOLD | curses.color_pair(1))
+        self.assertEqual(theme.status_error, curses.A_BOLD | curses.color_pair(5))
+        self.assertNotEqual(theme.user_header, theme.assistant_header)
 
     def test_preview_visible_lines_scroll_and_clamp(self) -> None:
         lines = ["one", "two", "three", "four"]
@@ -326,6 +374,38 @@ def sample_thread(thread_id: str = "019f-test-tui") -> ThreadRow:
 class FakeScreen:
     def clear(self) -> None:
         return None
+
+
+class FakeColorCurses:
+    A_REVERSE = 1
+    A_BOLD = 2
+    A_DIM = 4
+    COLOR_CYAN = 10
+    COLOR_BLUE = 11
+    COLOR_GREEN = 12
+    COLOR_YELLOW = 13
+    COLOR_RED = 14
+    COLOR_WHITE = 15
+    COLOR_MAGENTA = 16
+
+    def __init__(self) -> None:
+        self.started = False
+        self.pairs: list[tuple[int, int, int]] = []
+
+    def has_colors(self) -> bool:
+        return True
+
+    def start_color(self) -> None:
+        self.started = True
+
+    def use_default_colors(self) -> None:
+        return None
+
+    def init_pair(self, pair: int, foreground: int, background: int) -> None:
+        self.pairs.append((pair, foreground, background))
+
+    def color_pair(self, pair: int) -> int:
+        return pair * 256
 
 
 if __name__ == "__main__":
