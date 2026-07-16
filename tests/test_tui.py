@@ -339,7 +339,7 @@ class TuiTests(unittest.TestCase):
 
         self.assertEqual(
             stream_completion_line("Stream finished."),
-            "[task] Stream finished. Review output: arrows/PageUp/PageDown scroll, Enter/q returns.",
+            "[task] Stream finished.",
         )
         self.assertEqual(line_attr(stream_completion_line("Stream finished."), theme), 4)
         self.assertEqual(line_attr(stream_completion_line("Stream exited with status 1."), theme), 8)

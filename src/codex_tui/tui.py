@@ -617,7 +617,7 @@ def stream_command_short_label(command_label: str) -> str:
 
 
 def stream_completion_line(status: str) -> str:
-    return f"[task] {status} Review output: arrows/PageUp/PageDown scroll, Enter/q returns."
+    return f"[task] {status}"
 
 
 def stream_session_label(thread: ThreadRow) -> str:
