@@ -725,16 +725,22 @@ def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
     in_code_block = False
     in_tool_output = False
     in_error_activity = False
+    current_role_body = 0
     for line in lines:
         stripped = line.strip()
         fence = is_code_fence(stripped)
-        starts_tool_output = stripped.startswith("[tool output]")
-        starts_error_activity = is_error_activity(stripped)
-        starts_new_block = is_activity_header(stripped) or is_any_role_header(stripped)
+        detect_blocks = not in_code_block and not fence
+        starts_tool_output = detect_blocks and stripped.startswith("[tool output]")
+        starts_error_activity = detect_blocks and is_error_activity(stripped)
+        role_body_attr = role_body_attr_for_header(stripped, theme) if detect_blocks else None
+        starts_role_block = role_body_attr is not None
+        starts_new_block = (detect_blocks and is_activity_header(stripped)) or starts_role_block
         if starts_new_block and not starts_tool_output:
             in_tool_output = False
         if starts_new_block and not starts_error_activity:
             in_error_activity = False
+        if starts_new_block:
+            current_role_body = role_body_attr or 0
         if not stripped:
             in_error_activity = False
         if in_code_block or fence:
@@ -743,13 +749,19 @@ def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
             attr = line_attr(line, theme)
             in_tool_output = True
             in_error_activity = False
+            current_role_body = 0
         elif starts_error_activity:
             attr = line_attr(line, theme)
             in_error_activity = True
+            current_role_body = 0
+        elif starts_role_block:
+            attr = line_attr(line, theme)
         elif in_tool_output:
             attr = theme.code
         elif in_error_activity:
             attr = theme.status_error
+        elif current_role_body:
+            attr = current_role_body
         else:
             attr = line_attr(line, theme)
         result.append((line, attr))
@@ -779,12 +791,14 @@ def is_activity_header(line: str) -> bool:
     )
 
 
-def is_any_role_header(line: str) -> bool:
-    return (
-        is_role_header(line, "YOU")
-        or is_role_header(line, "CODEX final")
-        or is_role_header(line, "CODEX")
-    )
+def role_body_attr_for_header(line: str, theme: TuiTheme) -> int | None:
+    if is_role_header(line, "YOU"):
+        return theme.user_body
+    if is_role_header(line, "CODEX final"):
+        return theme.assistant_final_body
+    if is_role_header(line, "CODEX"):
+        return theme.assistant_body
+    return None
 
 
 def status_line_attr(status: str, theme: TuiTheme) -> int:

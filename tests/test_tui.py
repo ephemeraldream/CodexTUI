@@ -221,6 +221,61 @@ class TuiTests(unittest.TestCase):
             ],
         )
 
+    def test_styled_lines_styles_role_block_bodies_until_next_block(self) -> None:
+        theme = TuiTheme(
+            user_header=10,
+            assistant_header=20,
+            assistant_final_header=30,
+            user_body=11,
+            assistant_body=21,
+            assistant_final_body=31,
+            status_error=50,
+            tool_header=60,
+            code=70,
+        )
+
+        rows = styled_lines(
+            [
+                "YOU",
+                "  Inspect the TUI.",
+                "",
+                "  Keep the conversation readable.",
+                "CODEX",
+                "  I am checking the stream renderer.",
+                "```python",
+                "YOU",
+                "print('hi')",
+                "```",
+                "  After code.",
+                "[tool] exec_command failed: pytest",
+                "1 failed",
+                "CODEX final",
+                "  Done.",
+            ],
+            theme,
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                ("YOU", 10),
+                ("  Inspect the TUI.", 11),
+                ("", 11),
+                ("  Keep the conversation readable.", 11),
+                ("CODEX", 20),
+                ("  I am checking the stream renderer.", 21),
+                ("```python", 70),
+                ("YOU", 70),
+                ("print('hi')", 70),
+                ("```", 70),
+                ("  After code.", 21),
+                ("[tool] exec_command failed: pytest", 50),
+                ("1 failed", 50),
+                ("CODEX final", 30),
+                ("  Done.", 31),
+            ],
+        )
+
     def test_draw_preview_styles_code_body_when_scrolled_inside_block(self) -> None:
         app = TuiApp(
             [sample_thread()],
@@ -284,6 +339,10 @@ class TuiTests(unittest.TestCase):
         self.assertIn((1, curses.COLOR_CYAN, -1), curses.pairs)
         self.assertIn((5, curses.COLOR_RED, -1), curses.pairs)
         self.assertEqual(theme.user_header, curses.A_BOLD | curses.color_pair(1))
+        self.assertEqual(theme.user_body, curses.color_pair(1))
+        self.assertEqual(theme.assistant_body, curses.color_pair(2))
+        self.assertEqual(theme.assistant_final_body, curses.color_pair(3))
+        self.assertNotEqual(theme.user_header, theme.user_body)
         self.assertEqual(theme.status_error, curses.A_BOLD | curses.color_pair(5))
         self.assertNotEqual(theme.user_header, theme.assistant_header)
 

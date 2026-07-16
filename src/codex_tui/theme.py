@@ -14,6 +14,9 @@ class TuiTheme:
     user_header: int = 0
     assistant_header: int = 0
     assistant_final_header: int = 0
+    user_body: int = 0
+    assistant_body: int = 0
+    assistant_final_body: int = 0
     status_muted: int = 0
     status_error: int = 0
     tool_header: int = 0
@@ -35,6 +38,9 @@ def build_curses_theme(curses: object) -> TuiTheme:
         user_header=bold,
         assistant_header=bold,
         assistant_final_header=bold,
+        user_body=0,
+        assistant_body=0,
+        assistant_final_body=0,
         status_muted=dim,
         status_error=bold,
         tool_header=bold,
@@ -77,6 +83,9 @@ def build_curses_theme(curses: object) -> TuiTheme:
         user_header=bold | color_pair(curses, pairs["user"]),
         assistant_header=bold | color_pair(curses, pairs["assistant"]),
         assistant_final_header=bold | color_pair(curses, pairs["final"]),
+        user_body=color_pair(curses, pairs["user"]),
+        assistant_body=color_pair(curses, pairs["assistant"]),
+        assistant_final_body=color_pair(curses, pairs["final"]),
         status_muted=dim | color_pair(curses, pairs["muted"]),
         status_error=bold | color_pair(curses, pairs["error"]),
         tool_header=bold | color_pair(curses, pairs["tool"]),
