@@ -140,6 +140,9 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(line_attr("[1] 2026-07-17 10:00:00  YOU", theme), 10)
         self.assertEqual(line_attr("[2] 2026-07-17 10:00:01  CODEX", theme), 20)
         self.assertEqual(line_attr("[3] 2026-07-17 10:00:02  CODEX final", theme), 30)
+        self.assertEqual(line_attr("YOU 10:00", theme), 10)
+        self.assertEqual(line_attr("CODEX 10:01", theme), 20)
+        self.assertEqual(line_attr("CODEX final 10:02", theme), 30)
         self.assertEqual(line_attr("[tool] exec_command: python3 -m unittest", theme), 60)
         self.assertEqual(line_attr("[tokens] input 10k, output 2k", theme), 40)
         self.assertEqual(line_attr("[task] Codex turn failed: auth expired", theme), 50)
@@ -479,8 +482,9 @@ class TuiTests(unittest.TestCase):
             lines = app.preview_lines(thread, width=80)
 
         rendered = "\n".join(lines)
-        self.assertTrue(lines[0].endswith("  YOU"))
+        self.assertRegex(lines[0], r"^YOU \d\d:\d\d$")
         self.assertIn("Inspect the transcript", rendered)
+        self.assertNotIn("2026-07-10", lines[0])
         self.assertNotIn("Codex session:", rendered)
         self.assertNotIn("File:", rendered)
 

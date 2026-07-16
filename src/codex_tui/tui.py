@@ -254,6 +254,7 @@ class TuiApp:
                     color=False,
                     width=width,
                     include_metadata=False,
+                    header_style="compact",
                 )
             self.preview_cache[key] = text.splitlines()
         return self.preview_cache[key]
@@ -627,7 +628,18 @@ def status_line_attr(status: str, theme: TuiTheme) -> int:
 
 
 def is_role_header(line: str, role: str) -> bool:
-    return line.startswith("[") and line.endswith(f"  {role}")
+    if line.startswith("[") and line.endswith(f"  {role}"):
+        return True
+    if line == role:
+        return True
+    prefix = f"{role} "
+    if not line.startswith(prefix):
+        return False
+    return looks_like_compact_time(line[len(prefix) :])
+
+
+def looks_like_compact_time(value: str) -> bool:
+    return len(value) == 5 and value[:2].isdigit() and value[2] == ":" and value[3:].isdigit()
 
 
 def is_error_activity(line: str) -> bool:

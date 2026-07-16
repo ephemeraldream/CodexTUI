@@ -182,6 +182,7 @@ def render_thread(
     color: bool = False,
     width: int | None = None,
     include_metadata: bool = True,
+    header_style: str = "full",
 ) -> str:
     path = Path(thread.rollout_path)
     messages = filter_messages(read_messages(path), mode, phases)
@@ -202,8 +203,7 @@ def render_thread(
         lines.append("(No chat messages found in this session.)")
         return "\n".join(lines)
     for idx, message in enumerate(messages, start=1):
-        role = role_label(message)
-        header = f"[{idx}] {format_timestamp(message.timestamp)}  {role}"
+        header = message_header(idx, message, header_style)
         if color:
             header = colorize_header(header, message.role, message.phase)
         lines.append(header)
@@ -253,6 +253,14 @@ def role_label(message: ChatMessage) -> str:
     return "CODEX"
 
 
+def message_header(idx: int, message: ChatMessage, header_style: str) -> str:
+    role = role_label(message)
+    if header_style == "compact":
+        timestamp = compact_timestamp(message.timestamp)
+        return f"{role} {timestamp}" if timestamp else role
+    return f"[{idx}] {format_timestamp(message.timestamp)}  {role}"
+
+
 def colorize_header(text: str, role: str, phase: str) -> str:
     if role == "user":
         return f"\033[1;36m{text}\033[0m"
@@ -269,6 +277,16 @@ def format_timestamp(value: str) -> str:
         return parsed.astimezone().strftime("%Y-%m-%d %H:%M:%S")
     except ValueError:
         return value
+
+
+def compact_timestamp(value: str) -> str:
+    if not value:
+        return ""
+    try:
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.astimezone().strftime("%H:%M")
+    except ValueError:
+        return ""
 
 
 def format_ms(value: int) -> str:

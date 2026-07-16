@@ -136,9 +136,14 @@ class TranscriptTests(unittest.TestCase):
         )
         rendered = render_thread(thread, mode="assistant")
         self.assertIn("Codex session: 019f-tes", rendered)
+        self.assertIn("2026-", rendered)
         self.assertIn("I will inspect the failing path.", rendered)
         self.assertIn("The bug is fixed.", rendered)
         self.assertNotIn("Find the bug\n\n[", rendered)
+
+        compact = render_thread(thread, mode="assistant", include_metadata=False, header_style="compact")
+        self.assertRegex(compact.splitlines()[0], r"^CODEX \d\d:\d\d$")
+        self.assertNotIn("2026-", compact.splitlines()[0])
 
     def test_render_thread_pretty_prints_assistant_json_answers(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
