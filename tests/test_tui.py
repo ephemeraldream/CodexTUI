@@ -20,6 +20,7 @@ from codex_tui.tui import (
     scroll_position_label,
     session_row_lines,
     status_line_attr,
+    stream_header,
     styled_lines,
     stream_new_prompt,
     stream_selected_thread,
@@ -270,6 +271,12 @@ class TuiTests(unittest.TestCase):
         )
         self.assertEqual(preview_header("assistant", "6-12/20", width=28), "assistant | 6-12/20")
 
+    def test_stream_header_keeps_context_in_chrome(self) -> None:
+        self.assertEqual(
+            stream_header("resume 019f-test Build a TUI", "2-5/6", width=50),
+            " CodexTUI Stream | resume 019f-test B... | 2-5/6 ",
+        )
+
     def test_footer_help_tracks_focus_and_empty_state(self) -> None:
         self.assertEqual(
             footer_help("sessions", has_threads=True),
@@ -379,7 +386,7 @@ class TuiTests(unittest.TestCase):
 
         app.draw_stream()
 
-        self.assertEqual(screen.text_at(0, 0), " CodexTUI Stream | 2-5/6 ")
+        self.assertEqual(screen.text_at(0, 0), " CodexTUI Stream | resume | 2-5/6 ")
 
     def test_focus_toggle_moves_arrows_between_sessions_and_preview(self) -> None:
         app = TuiApp(
@@ -601,13 +608,39 @@ class TuiTests(unittest.TestCase):
         app.ask_new()
 
         self.assertEqual(prompts, ["Start fresh"])
-        self.assertEqual(app.stream_lines[0], "CodexTUI streaming a new prompt via codex exec --json")
+        self.assertEqual(app.stream_context_label, "new prompt")
+        self.assertNotIn("CodexTUI streaming a new prompt via codex exec --json", app.stream_lines)
         self.assertEqual(app.stream_command_label, "codex exec --json")
         self.assertIn("new answer", app.stream_lines)
         self.assertEqual(app.threads, refreshed)
         self.assertEqual(app.selected, 0)
         self.assertEqual(app.top, 0)
         self.assertEqual(app.status, "Stream finished; refreshed 2 sessions.")
+
+    def test_resume_stream_uses_selected_session_context_in_chrome(self) -> None:
+        prompts: list[tuple[str, str]] = []
+
+        def runner(thread: ThreadRow, prompt: str, stdout: StringIO) -> int:
+            prompts.append((thread.id, prompt))
+            stdout.write("resume answer\n")
+            return 0
+
+        app = TuiApp(
+            [sample_thread("019f-test-old")],
+            runner,
+        )
+        app.read_prompt = lambda _label: "Continue here"  # type: ignore[method-assign]
+        app.draw_stream = lambda _current_line=None: None  # type: ignore[method-assign]
+        app.review_stream = lambda: None  # type: ignore[method-assign]
+        app.stdscr = FakeScreen()
+
+        app.ask_selected()
+
+        self.assertEqual(prompts, [("019f-test-old", "Continue here")])
+        self.assertEqual(app.stream_context_label, "resume 019f-tes Build a TUI")
+        self.assertNotIn("CodexTUI streaming 019f-tes via codex exec resume --json", app.stream_lines)
+        self.assertEqual(app.stream_command_label, "codex exec resume --json")
+        self.assertIn("resume answer", app.stream_lines)
 
 
 def sample_thread(thread_id: str = "019f-test-tui") -> ThreadRow:

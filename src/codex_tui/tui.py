@@ -51,6 +51,7 @@ class TuiApp:
     stream_lines: list[str] = field(default_factory=list)
     stream_top: int | None = None
     stream_command_label: str = "codex exec resume --json"
+    stream_context_label: str = "resume"
     theme: TuiTheme = field(default_factory=TuiTheme)
 
     def run(self, stdscr: object) -> int:
@@ -278,7 +279,7 @@ class TuiApp:
             return
         thread = self.selected_thread()
         self.stream_prompt(
-            title=f"CodexTUI streaming {short_id(thread.id)} via codex exec resume --json",
+            context_label=stream_session_label(thread),
             command_label="codex exec resume --json",
             runner=lambda stdout: self.stream_runner(thread, prompt, stdout),
         )
@@ -294,17 +295,18 @@ class TuiApp:
             self.status = "New prompt cancelled."
             return
         code = self.stream_prompt(
-            title="CodexTUI streaming a new prompt via codex exec --json",
+            context_label="new prompt",
             command_label="codex exec --json",
             runner=lambda stdout: self.new_stream_runner(prompt, stdout),
         )
         self.refresh_after_new_stream(code)
         self.stdscr.clear()
 
-    def stream_prompt(self, *, title: str, command_label: str, runner: Callable[[StreamOutput], int]) -> int:
+    def stream_prompt(self, *, context_label: str, command_label: str, runner: Callable[[StreamOutput], int]) -> int:
         self.stream_top = None
         self.stream_command_label = command_label
-        self.stream_lines = [title, ""]
+        self.stream_context_label = context_label
+        self.stream_lines = []
         self.status = "Streaming response inside CodexTUI."
         self.draw_stream()
         writer = CursesStreamWriter(self)
@@ -346,7 +348,7 @@ class TuiApp:
         body_height = height - 3
         theme = self.theme
         stream_scroll = self.stream_scroll_label(current_line, width, body_height)
-        add_text(stdscr, 0, 0, f" CodexTUI Stream | {stream_scroll} ", width, theme.app_header)
+        add_text(stdscr, 0, 0, stream_header(self.stream_context_label, stream_scroll, width), width, theme.app_header)
         for row, (line, attr) in enumerate(self.visible_stream_rows(current_line, width, body_height), start=1):
             add_text(stdscr, row, 0, line, width, attr)
         add_text(
@@ -559,6 +561,29 @@ def preview_header(mode: str, scroll_label: str, width: int) -> str:
         return compact
     tight = f"{mode} | {scroll_label}"
     return fit_header(tight, width)
+
+
+def stream_header(context_label: str, scroll_label: str, width: int) -> str:
+    clean_context = " ".join(context_label.split()).strip()
+    if clean_context:
+        prefix = " CodexTUI Stream | "
+        suffix = f" | {scroll_label} "
+        context_width = max(0, width - 1 - len(prefix) - len(suffix))
+        if context_width > 0:
+            header = f"{prefix}{truncate(clean_context, context_width)}{suffix}"
+            if fits_terminal_width(header, width):
+                return header
+            return fit_header(header, width)
+    compact = f" CodexTUI Stream | {scroll_label} "
+    if fits_terminal_width(compact, width):
+        return compact
+    return fit_header(f"Stream | {scroll_label}", width)
+
+
+def stream_session_label(thread: ThreadRow) -> str:
+    title = thread.title or thread.first_user_message or thread.preview
+    suffix = f" {title}" if title else ""
+    return f"resume {short_id(thread.id)}{suffix}"
 
 
 def preview_mode_tabs(active_mode: str) -> str:
