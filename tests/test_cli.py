@@ -32,6 +32,19 @@ class CliTests(unittest.TestCase):
         )
         self.assertIn("CodexTUI 0.1.0", result.stdout)
 
+    def test_legacy_codex_plus_module_still_dispatches(self) -> None:
+        env = dict(os.environ)
+        env["PYTHONPATH"] = "src"
+        result = subprocess.run(
+            [sys.executable, "-m", "codex_plus", "--version"],
+            cwd=os.getcwd(),
+            env=env,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        self.assertIn("CodexTUI 0.1.0", result.stdout)
+
     def test_help_hides_internal_preview_commands(self) -> None:
         env = dict(os.environ)
         env["PYTHONPATH"] = "src"

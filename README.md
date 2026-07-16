@@ -10,6 +10,7 @@ It reads local Codex session files, renders cleaner transcripts, and launches of
 ## What You Get
 
 - A small CLI named `ctui`.
+- A legacy `cxp` alias for existing local installs during the rename from CodexPlus.
 - A terminal UI for browsing sessions and running follow-up prompts.
 - Clean transcript views without system, developer, tool, and bootstrap noise.
 - Search across clean user and assistant messages.
@@ -177,6 +178,7 @@ ctui doctor
 
 Running `ctui` without a subcommand opens the same session browser as `ctui h`.
 Running `ctui history` also opens the session browser.
+The `cxp` command remains available as a legacy alias, but new documentation uses `ctui`.
 
 ## Terminal UI
 

@@ -34,9 +34,10 @@ Issues = "https://github.com/ephemeraldream/CodexTUI/issues"
 
 [project.scripts]
 ctui = "codex_tui.cli:main"
+cxp = "codex_tui.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/codex_tui"]
+packages = ["src/codex_tui", "src/codex_plus"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
