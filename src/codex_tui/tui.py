@@ -209,12 +209,12 @@ class TuiApp:
         lines = self.empty_preview_lines() if not self.threads else self.preview_lines(self.selected_thread(), width)
         wrapped = wrap_lines(lines, width)
         self.preview_top = clamped_scroll_top(len(wrapped), height, self.preview_top)
-        lines = wrapped[self.preview_top : self.preview_top + max(0, height)]
+        rows = styled_lines(wrapped, self.theme)[self.preview_top : self.preview_top + max(0, height)]
         row = y
-        for line in lines:
+        for line, attr in rows:
             if row >= y + height:
                 break
-            add_text(self.stdscr, row, x, line, width, line_attr(line, self.theme))
+            add_text(self.stdscr, row, x, line, width, attr)
             row += 1
 
     def preview_lines(self, thread: ThreadRow, width: int | None = None) -> list[str]:
@@ -315,8 +315,8 @@ class TuiApp:
         theme = self.theme
         add_text(stdscr, 0, 0, " CodexTUI Stream ", width, theme.app_header)
         body_height = height - 3
-        for row, line in enumerate(self.visible_stream_lines(current_line, width, body_height), start=1):
-            add_text(stdscr, row, 0, line, width, line_attr(line, theme))
+        for row, (line, attr) in enumerate(self.visible_stream_rows(current_line, width, body_height), start=1):
+            add_text(stdscr, row, 0, line, width, attr)
         add_text(
             stdscr,
             height - 2,
@@ -329,6 +329,9 @@ class TuiApp:
         stdscr.refresh()
 
     def visible_stream_lines(self, current_line: str | None, width: int, height: int) -> list[str]:
+        return [line for line, _attr in self.visible_stream_rows(current_line, width, height)]
+
+    def visible_stream_rows(self, current_line: str | None, width: int, height: int) -> list[tuple[str, int]]:
         if height <= 0:
             return []
         lines = list(self.stream_lines)
@@ -336,7 +339,7 @@ class TuiApp:
             lines.append(current_line)
         wrapped = wrap_lines(lines, width)
         start = self.stream_start(len(wrapped), height)
-        return wrapped[start : start + height]
+        return styled_lines(wrapped, self.theme)[start : start + height]
 
     def stream_start(self, total_lines: int, height: int) -> int:
         requested = total_lines if self.stream_top is None else self.stream_top
@@ -521,9 +524,29 @@ def line_attr(line: str, theme: TuiTheme) -> int:
         return theme.tool_header
     if stripped.startswith(("[task]", "[tokens]", "[context]", "[reasoning]", "[thread]", "[item]")):
         return theme.status_muted
-    if stripped.startswith("```"):
+    if is_code_fence(stripped):
         return theme.code
     return 0
+
+
+def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
+    result: list[tuple[str, int]] = []
+    in_code_block = False
+    for line in lines:
+        stripped = line.strip()
+        fence = is_code_fence(stripped)
+        if in_code_block or fence:
+            attr = theme.code
+        else:
+            attr = line_attr(line, theme)
+        result.append((line, attr))
+        if fence:
+            in_code_block = not in_code_block
+    return result
+
+
+def is_code_fence(line: str) -> bool:
+    return line.startswith(("```", "~~~"))
 
 
 def status_line_attr(status: str, theme: TuiTheme) -> int:

@@ -15,6 +15,7 @@ from codex_tui.tui import (
     line_attr,
     session_row_lines,
     status_line_attr,
+    styled_lines,
     stream_new_prompt,
     stream_selected_thread,
     visible_lines,
@@ -138,7 +139,61 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(line_attr("[tokens] input 10k, output 2k", theme), 40)
         self.assertEqual(line_attr("[task] Codex turn failed: auth expired", theme), 50)
         self.assertEqual(line_attr("```python", theme), 70)
+        self.assertEqual(line_attr("~~~python", theme), 70)
         self.assertEqual(line_attr("ordinary assistant text", theme), 0)
+
+    def test_styled_lines_styles_fenced_code_block_body(self) -> None:
+        theme = TuiTheme(code=70, tool_header=60)
+
+        rows = styled_lines(
+            ["```python", "print('hi')", "```", "[tool] exec_command: pytest"],
+            theme,
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                ("```python", 70),
+                ("print('hi')", 70),
+                ("```", 70),
+                ("[tool] exec_command: pytest", 60),
+            ],
+        )
+
+    def test_draw_preview_styles_code_body_when_scrolled_inside_block(self) -> None:
+        app = TuiApp(
+            [sample_thread()],
+            lambda _thread, _prompt, _stdout: 0,
+            preview_top=1,
+            theme=TuiTheme(code=70),
+        )
+        app.preview_lines = lambda _thread, _width=None: [  # type: ignore[method-assign]
+            "```python",
+            "print('hi')",
+            "```",
+        ]
+        screen = RecordingWindow()
+        app.stdscr = screen
+
+        app.draw_preview(x=0, y=2, width=80, height=2)
+
+        self.assertEqual(screen.text_at(2, 0), "print('hi')")
+        self.assertEqual(screen.attr_at(2, 0), 70)
+        self.assertEqual(screen.text_at(3, 0), "```")
+        self.assertEqual(screen.attr_at(3, 0), 70)
+
+    def test_visible_stream_rows_styles_code_body_when_scrolled_inside_block(self) -> None:
+        app = TuiApp(
+            [sample_thread()],
+            lambda _thread, _prompt, _stdout: 0,
+            theme=TuiTheme(code=70),
+        )
+        app.stream_lines = ["```python", "print('hi')", "```"]
+        app.stream_top = 1
+
+        rows = app.visible_stream_rows(None, width=80, height=1)
+
+        self.assertEqual(rows, [("print('hi')", 70)])
 
     def test_status_line_attr_marks_failures_prominently(self) -> None:
         theme = TuiTheme(status_muted=4, status_error=8)
