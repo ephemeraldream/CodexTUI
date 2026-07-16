@@ -158,11 +158,12 @@ class TuiApp:
         body_height = height - 4
         preview_height = body_height - 1
         self.keep_selected_visible(visible_session_count(body_height))
+        sessions_scroll = self.session_scroll_label(body_height)
         preview_scroll = self.preview_scroll_label(preview_width, preview_height)
 
         sessions_attr = theme.pane_active if self.focus == "sessions" else theme.pane_inactive
         preview_attr = theme.pane_active if self.focus == "preview" else theme.pane_inactive
-        add_text(stdscr, 1, 0, "Sessions", list_width, sessions_attr)
+        add_text(stdscr, 1, 0, f"Sessions | {sessions_scroll}", list_width, sessions_attr)
         add_text(stdscr, 1, preview_x, f"Preview: {self.mode} | {preview_scroll}", preview_width, preview_attr)
         for y in range(1, height - 2):
             add_text(stdscr, y, list_width, "|", 2, theme.divider)
@@ -184,6 +185,10 @@ class TuiApp:
             self.top = self.selected
         elif self.selected >= self.top + visible_count:
             self.top = self.selected - visible_count + 1
+
+    def session_scroll_label(self, height: int) -> str:
+        visible_count = visible_session_count(height)
+        return scroll_position_label(len(self.threads), visible_count, self.top)
 
     def draw_sessions(self, width: int, height: int) -> None:
         theme = self.theme

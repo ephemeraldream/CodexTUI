@@ -240,6 +240,20 @@ class TuiTests(unittest.TestCase):
 
         self.assertEqual(screen.text_at(1, 28), "Preview: chat | 6-12/20")
 
+    def test_draw_header_includes_session_scroll_position(self) -> None:
+        threads = [sample_thread(f"019f-test-{idx}") for idx in range(8)]
+        app = TuiApp(
+            threads,
+            lambda _thread, _prompt, _stdout: 0,
+            selected=5,
+        )
+        screen = RecordingWindow(height=12, width=80)
+        app.stdscr = screen
+
+        app.draw()
+
+        self.assertEqual(screen.text_at(1, 0), "Sessions | 3-6/8")
+
     def test_visible_session_count_tracks_two_line_rows(self) -> None:
         self.assertEqual(visible_session_count(1), 1)
         self.assertEqual(visible_session_count(4), 2)
