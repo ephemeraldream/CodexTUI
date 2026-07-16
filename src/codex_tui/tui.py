@@ -683,7 +683,7 @@ def visible_session_count(height: int) -> int:
 def session_row_lines(thread: ThreadRow, marker: str, width: int) -> tuple[str, str]:
     title = thread.title or thread.first_user_message or thread.preview or "(untitled)"
     title_line = prefixed_session_line(f"{marker} ", title, width)
-    metadata_line = prefixed_session_line("  ", session_metadata(thread), width)
+    metadata_line = prefixed_session_line("  ", session_metadata(thread, width), width)
     return title_line, metadata_line
 
 
@@ -694,13 +694,54 @@ def prefixed_session_line(prefix: str, text: str, width: int) -> str:
     return f"{prefix}{truncate(text, usable_width - len(prefix))}"
 
 
-def session_metadata(thread: ThreadRow) -> str:
-    parts = [short_id(thread.id), thread.source or "?", format_ms(thread.recency_at_ms)]
+def session_metadata(thread: ThreadRow, width: int) -> str:
+    text_width = max(1, width - 1 - len("  "))
+    core = [short_id(thread.id), thread.source or "?"]
+    cwd = clean_session_cwd(thread.cwd)
+    short_cwd = basename_label(cwd)
+    updated = compact_session_time(thread.recency_at_ms)
     if thread.archived:
-        parts.append("archived")
-    if thread.cwd:
-        parts.append(thread.cwd)
-    return "  ".join(parts)
+        candidates = [
+            core + ["archived", cwd, updated],
+            core + ["archived", short_cwd, updated],
+            core + ["archived", cwd],
+            core + ["archived", short_cwd],
+            core + ["archived"],
+            core,
+        ]
+    else:
+        candidates = [
+            core + [cwd, updated],
+            core + [short_cwd, updated],
+            core + [cwd],
+            core + [short_cwd],
+            core + [updated],
+            core,
+        ]
+    for parts in candidates:
+        label = " ".join(part for part in parts if part)
+        if len(label) <= text_width:
+            return label
+    return " ".join(core)
+
+
+def clean_session_cwd(cwd: str) -> str:
+    clean = " ".join((cwd or "?").split()).strip()
+    return clean or "?"
+
+
+def basename_label(path: str) -> str:
+    clean = path.rstrip("/\\")
+    if clean in {"", "?"}:
+        return clean or "?"
+    return clean.replace("\\", "/").rsplit("/", 1)[-1] or clean
+
+
+def compact_session_time(value: int) -> str:
+    formatted = format_ms(value)
+    if len(formatted) >= 16 and formatted[4] == "-" and formatted[7] == "-":
+        return formatted[5:16]
+    return formatted
 
 
 def clamped_scroll_top(total_lines: int, height: int, requested: int) -> int:

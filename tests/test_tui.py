@@ -302,7 +302,17 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(title_line, "> Build a TUI")
         self.assertIn("019f-ses", metadata_line)
         self.assertIn("cli", metadata_line)
+        self.assertRegex(metadata_line, r"\d\d-\d\d \d\d:\d\d")
+        self.assertNotIn("2026-", metadata_line)
         self.assertIn("/tmp/project", metadata_line)
+
+    def test_session_row_lines_keep_project_visible_at_narrow_width(self) -> None:
+        thread = sample_thread("019f-session-row")
+
+        _title_line, metadata_line = session_row_lines(thread, ">", width=26)
+
+        self.assertEqual(metadata_line, "  019f-ses cli project")
+        self.assertLessEqual(len(metadata_line), 25)
 
     def test_session_row_lines_reserve_final_terminal_column(self) -> None:
         thread = sample_thread("019f-session-width")
