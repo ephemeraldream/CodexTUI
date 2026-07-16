@@ -279,12 +279,12 @@ class TuiApp:
             self.status = "Ask cancelled."
             return
         thread = self.selected_thread()
-        self.stream_prompt(
+        code = self.stream_prompt(
             context_label=stream_session_label(thread),
             command_label="codex exec resume --json",
             runner=lambda stdout: self.stream_runner(thread, prompt, stdout),
         )
-        self.preview_cache.clear()
+        self.refresh_after_resume_stream(code)
         self.stdscr.clear()
 
     def ask_new(self) -> None:
@@ -324,7 +324,7 @@ class TuiApp:
 
     def refresh_after_new_stream(self, code: int) -> None:
         self.preview_cache.clear()
-        completion = "Stream finished" if code == 0 else f"Stream exited with status {code}"
+        completion = stream_completion_summary(code)
         if self.thread_loader is None:
             return
         refreshed = self.thread_loader()
@@ -334,6 +334,22 @@ class TuiApp:
         self.threads = refreshed
         self.selected = 0
         self.top = 0
+        self.preview_top = 0
+        self.status = f"{completion}; refreshed {len(self.threads)} sessions."
+
+    def refresh_after_resume_stream(self, code: int) -> None:
+        self.preview_cache.clear()
+        if self.thread_loader is None:
+            return
+        selected_id = self.selected_thread().id if self.threads else ""
+        refreshed = self.thread_loader()
+        completion = stream_completion_summary(code)
+        if not refreshed:
+            self.status = f"{completion}; refresh found no sessions; keeping current list."
+            return
+        self.threads = refreshed
+        self.selected = selection_index_for_thread(self.threads, selected_id, self.selected)
+        self.top = min(self.top, self.selected)
         self.preview_top = 0
         self.status = f"{completion}; refreshed {len(self.threads)} sessions."
 
@@ -618,6 +634,10 @@ def stream_command_short_label(command_label: str) -> str:
 
 def stream_completion_line(status: str) -> str:
     return f"[task] {status}"
+
+
+def stream_completion_summary(code: int) -> str:
+    return "Stream finished" if code == 0 else f"Stream exited with status {code}"
 
 
 def stream_session_label(thread: ThreadRow) -> str:

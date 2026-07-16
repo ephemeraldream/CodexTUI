@@ -747,6 +747,36 @@ class TuiTests(unittest.TestCase):
         self.assertIn("resume answer", app.stream_lines)
         self.assertIn(stream_completion_line("Stream finished."), app.stream_lines)
 
+    def test_resume_stream_refreshes_sessions_after_followup(self) -> None:
+        prompts: list[tuple[str, str]] = []
+        refreshed = [sample_thread("019f-test-new"), sample_thread("019f-test-old")]
+
+        def runner(thread: ThreadRow, prompt: str, stdout: StringIO) -> int:
+            prompts.append((thread.id, prompt))
+            stdout.write("resume answer\n")
+            return 0
+
+        app = TuiApp(
+            [sample_thread("019f-test-old")],
+            runner,
+            thread_loader=lambda: refreshed,
+            preview_top=5,
+        )
+        app.preview_cache[("019f-test-old", "chat", 80)] = ["stale"]
+        app.read_prompt = lambda _label: "Continue here"  # type: ignore[method-assign]
+        app.draw_stream = lambda _current_line=None: None  # type: ignore[method-assign]
+        app.review_stream = lambda: None  # type: ignore[method-assign]
+        app.stdscr = FakeScreen()
+
+        app.ask_selected()
+
+        self.assertEqual(prompts, [("019f-test-old", "Continue here")])
+        self.assertEqual(app.threads, refreshed)
+        self.assertEqual(app.selected, 1)
+        self.assertEqual(app.preview_top, 0)
+        self.assertEqual(app.preview_cache, {})
+        self.assertEqual(app.status, "Stream finished; refreshed 2 sessions.")
+
 
 def sample_thread(thread_id: str = "019f-test-tui") -> ThreadRow:
     return ThreadRow(
