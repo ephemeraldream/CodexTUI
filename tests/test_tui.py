@@ -188,6 +188,17 @@ class TuiTests(unittest.TestCase):
         self.assertIn("pyproject.toml", lines)
         self.assertNotIn("src/hidden_tool_call.py", lines)
 
+    def test_preview_cache_tracks_terminal_width(self) -> None:
+        thread = sample_thread("019f-test-width")
+        app = TuiApp([thread], lambda _thread, _prompt, _stdout: 0)
+
+        narrow = app.preview_lines(thread, width=30)
+        wide = app.preview_lines(thread, width=80)
+
+        self.assertIn((thread.id, "chat", 30), app.preview_cache)
+        self.assertIn((thread.id, "chat", 80), app.preview_cache)
+        self.assertIsNot(narrow, wide)
+
     def test_refresh_threads_preserves_selected_session_and_clears_preview_cache(self) -> None:
         refreshed = [sample_thread("019f-test-new"), sample_thread("019f-test-two")]
         app = TuiApp(

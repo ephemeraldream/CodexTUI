@@ -180,6 +180,64 @@ class TranscriptTests(unittest.TestCase):
         self.assertIn('  "key_changes_made": [', rendered)
         self.assertNotIn('{"success":true,"key_changes_made"', rendered)
 
+    def test_render_thread_uses_markdown_layout_when_width_is_provided(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-md", "cwd": "/tmp/project", "source": "cli"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "agent_message",
+                        "phase": "final_answer",
+                        "message": "\n".join(
+                            [
+                                "## Result",
+                                "",
+                                "- First item wraps around the preview width for scanning.",
+                                "- Second item.",
+                                "",
+                                "```python",
+                                "def hello():",
+                                "    return 'world'",
+                                "```",
+                            ]
+                        ),
+                    },
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            thread = ThreadRow(
+                id="019f-test-md",
+                title="Markdown result",
+                cwd="/tmp/project",
+                source="cli",
+                archived=False,
+                rollout_path=str(path),
+                created_at_ms=1783677600000,
+                updated_at_ms=1783677605000,
+                recency_at_ms=1783677605000,
+                preview="",
+                first_user_message="",
+            )
+
+            rendered = render_thread(thread, mode="final", width=36)
+
+        self.assertIn("  ## Result", rendered)
+        self.assertIn("  - First item wraps around the", rendered)
+        self.assertIn("    preview width for scanning.", rendered)
+        self.assertIn("  ```python", rendered)
+        self.assertIn("      return 'world'", rendered)
+        message_rows = rendered.split("CODEX final", maxsplit=1)[1].splitlines()[1:]
+        for row in message_rows:
+            if row:
+                self.assertLessEqual(len(row), 35)
+
 
 def autonomous_prompt(objective: str) -> str:
     return (

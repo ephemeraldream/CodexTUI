@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .models import ChatMessage, ThreadRow
+from .terminal_markdown import render_code_block_lines, render_markdown_lines
 
 
 AUTONOMOUS_STATUS_KEYS = {"success", "summary", "key_changes_made", "key_learnings"}
@@ -179,6 +180,7 @@ def render_thread(
     mode: str = "chat",
     phases: set[str] | None = None,
     color: bool = False,
+    width: int | None = None,
 ) -> str:
     path = Path(thread.rollout_path)
     messages = filter_messages(read_messages(path), mode, phases)
@@ -200,16 +202,29 @@ def render_thread(
         if color:
             header = colorize_header(header, message.role, message.phase)
         lines.append(header)
-        lines.append(textwrap.indent(render_message_text(message), "  "))
+        lines.append(textwrap.indent(render_message_text(message, width=message_width(width)), "  "))
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_message_text(message: ChatMessage) -> str:
+def render_message_text(message: ChatMessage, *, width: int | None = None) -> str:
     text = message.text.rstrip()
     if message.role == "assistant":
-        return pretty_json_text(text)
+        pretty = pretty_json_text(text)
+        if width is not None:
+            if pretty != text:
+                return "\n".join(render_code_block_lines(pretty, width=width, language="json"))
+            return "\n".join(render_markdown_lines(pretty, width=width))
+        return pretty
+    if width is not None:
+        return "\n".join(render_markdown_lines(text, width=width))
     return text
+
+
+def message_width(width: int | None) -> int | None:
+    if width is None:
+        return None
+    return max(1, width - 4)
 
 
 def pretty_json_text(text: str) -> str:

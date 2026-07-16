@@ -36,7 +36,7 @@ class TuiApp:
     focus: str = "sessions"
     preview_top: int = 0
     status: str = "Enter continues the selected session; n starts a new CodexTUI JSON stream."
-    preview_cache: dict[tuple[str, str], list[str]] = field(default_factory=dict)
+    preview_cache: dict[tuple[str, str, int], list[str]] = field(default_factory=dict)
     stream_lines: list[str] = field(default_factory=list)
     stream_top: int | None = None
     stream_command_label: str = "codex exec resume --json"
@@ -194,7 +194,7 @@ class TuiApp:
             add_text(self.stdscr, row, 0, line, width, attr)
 
     def draw_preview(self, x: int, y: int, width: int, height: int) -> None:
-        lines = self.empty_preview_lines() if not self.threads else self.preview_lines(self.selected_thread())
+        lines = self.empty_preview_lines() if not self.threads else self.preview_lines(self.selected_thread(), width)
         wrapped = wrap_lines(lines, width)
         self.preview_top = clamped_scroll_top(len(wrapped), height, self.preview_top)
         lines = wrapped[self.preview_top : self.preview_top + max(0, height)]
@@ -205,13 +205,14 @@ class TuiApp:
             add_text(self.stdscr, row, x, line, width)
             row += 1
 
-    def preview_lines(self, thread: ThreadRow) -> list[str]:
-        key = (thread.id, self.mode)
+    def preview_lines(self, thread: ThreadRow, width: int | None = None) -> list[str]:
+        cache_width = max(0, width or 0)
+        key = (thread.id, self.mode, cache_width)
         if key not in self.preview_cache:
             if self.mode == "files":
                 text = render_file_hits(file_hits_for_thread(thread))
             else:
-                text = render_thread(thread, mode=self.mode, color=False)
+                text = render_thread(thread, mode=self.mode, color=False, width=width)
             self.preview_cache[key] = text.splitlines()
         return self.preview_cache[key]
 
