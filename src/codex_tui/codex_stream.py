@@ -15,6 +15,12 @@ from .transcript import (
 )
 
 
+TOOL_OUTPUT_FOLD_LINE_LIMIT = 20
+TOOL_OUTPUT_FOLD_BYTE_LIMIT = 4_000
+TOOL_OUTPUT_PREVIEW_LINES = 8
+TOOL_OUTPUT_PREVIEW_CHARS = 1_200
+
+
 @dataclass
 class CodexStreamRenderer:
     last_text: str = ""
@@ -259,6 +265,9 @@ def render_tool_output(
     prefix = f"[tool output] {label}" if label else "[tool output]"
     if not text:
         return f"{prefix}: (no output)"
+    folded = folded_tool_output(text)
+    if folded:
+        return f"{prefix}: {folded}"
     return f"{prefix}\n{text}"
 
 
@@ -469,6 +478,29 @@ def stringify_output(value: object) -> str:
     if isinstance(value, str):
         return value
     return json.dumps(value, ensure_ascii=False, indent=2)
+
+
+def folded_tool_output(text: str) -> str:
+    lines = text.splitlines()
+    byte_count = len(text.encode("utf-8"))
+    if len(lines) <= TOOL_OUTPUT_FOLD_LINE_LIMIT and byte_count <= TOOL_OUTPUT_FOLD_BYTE_LIMIT:
+        return ""
+    preview = tool_output_preview(lines)
+    line_label = "line" if len(lines) == 1 else "lines"
+    return f"folded {len(lines)} {line_label}, {format_bytes(byte_count)}; showing preview\n{preview}"
+
+
+def tool_output_preview(lines: list[str]) -> str:
+    preview_lines = lines[:TOOL_OUTPUT_PREVIEW_LINES]
+    preview = "\n".join(preview_lines)
+    if len(preview) <= TOOL_OUTPUT_PREVIEW_CHARS:
+        return preview
+    return preview[:TOOL_OUTPUT_PREVIEW_CHARS].rstrip() + "\n... [preview truncated]"
+
+
+def format_bytes(count: int) -> str:
+    label = "byte" if count == 1 else "bytes"
+    return f"{format_number(float(count))} {label}"
 
 
 def duration_text(value: object) -> str:

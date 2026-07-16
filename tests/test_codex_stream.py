@@ -122,6 +122,38 @@ class CodexStreamTests(unittest.TestCase):
         self.assertEqual(renderer.render_line(call_line), "[tool] exec_command: pytest (cwd: /tmp/project)")
         self.assertEqual(renderer.render_line(output_line), "[tool output] exec_command\n2 failed, 1 passed")
 
+    def test_renderer_folds_long_tool_output_activity(self) -> None:
+        call_line = json_line(
+            "response_item",
+            {
+                "type": "function_call",
+                "name": "exec_command",
+                "arguments": json.dumps({"cmd": "pytest"}),
+                "call_id": "call_long",
+            },
+        )
+        output = "\n".join(f"line {index}" for index in range(30))
+        output_line = json_line(
+            "response_item",
+            {
+                "type": "function_call_output",
+                "call_id": "call_long",
+                "output": output,
+            },
+        )
+        renderer = CodexStreamRenderer()
+
+        self.assertEqual(renderer.render_line(call_line), "[tool] exec_command: pytest")
+        rendered = renderer.render_line(output_line)
+
+        self.assertIsNotNone(rendered)
+        assert rendered is not None
+        self.assertIn("[tool output] exec_command: folded 30 lines", rendered)
+        self.assertIn("showing preview\nline 0\nline 1", rendered)
+        self.assertIn("line 7", rendered)
+        self.assertNotIn("line 8", rendered)
+        self.assertNotIn("line 29", rendered)
+
     def test_renderer_streams_patch_and_task_activity(self) -> None:
         task_line = json_line("event_msg", {"type": "task_started", "turn_id": "turn_1"})
         patch_line = json_line(
