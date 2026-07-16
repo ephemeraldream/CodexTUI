@@ -236,6 +236,34 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app.threads, threads)
         self.assertEqual(app.status, "Refresh found no sessions; keeping current list.")
 
+    def test_empty_tui_preview_guides_first_run_user(self) -> None:
+        app = TuiApp([], lambda _thread, _prompt, _stdout: 0)
+
+        lines = "\n".join(app.empty_preview_lines())
+
+        self.assertIn("No Codex sessions found", lines)
+        self.assertIn("Press n to start", lines)
+        self.assertIn("cxp doctor", lines)
+
+    def test_empty_tui_enter_does_not_crash_without_selected_session(self) -> None:
+        app = TuiApp([], lambda _thread, _prompt, _stdout: 0)
+
+        app.ask_selected()
+
+        self.assertEqual(app.status, "No selected session. Press n to start a new Codex prompt.")
+
+    def test_empty_tui_refresh_keeps_empty_state_with_guidance(self) -> None:
+        app = TuiApp(
+            [],
+            lambda _thread, _prompt, _stdout: 0,
+            thread_loader=lambda: [],
+        )
+
+        app.refresh_threads()
+
+        self.assertEqual(app.threads, [])
+        self.assertEqual(app.status, "Refresh found no sessions. Press n to start a new Codex prompt.")
+
     def test_new_prompt_streams_inside_tui_and_refreshes_sessions(self) -> None:
         prompts: list[str] = []
         refreshed = [sample_thread("019f-test-new"), sample_thread("019f-test-old")]

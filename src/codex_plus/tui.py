@@ -121,6 +121,12 @@ class TuiApp:
         selected_id = self.selected_thread().id if self.threads else ""
         refreshed = self.thread_loader()
         if not refreshed:
+            if not self.threads:
+                self.selected = 0
+                self.top = 0
+                self.preview_top = 0
+                self.status = "Refresh found no sessions. Press n to start a new Codex prompt."
+                return
             self.status = "Refresh found no sessions; keeping current list."
             return
         self.threads = refreshed
@@ -156,7 +162,10 @@ class TuiApp:
         self.draw_sessions(list_width, body_height)
         self.draw_preview(preview_x, 2, preview_width, body_height - 1)
 
-        help_text = "tab focus | arrows move/scroll | enter resume | n new | r refresh | v/a/f/u/o modes | q quit"
+        if self.threads:
+            help_text = "tab focus | arrows move/scroll | enter resume | n new | r refresh | v/a/f/u/o modes | q quit"
+        else:
+            help_text = "n new prompt | r refresh | q quit | run cxp doctor if Codex is not ready"
         add_text(stdscr, height - 2, 0, help_text, width, curses.A_REVERSE)
         add_text(stdscr, height - 1, 0, self.status, width)
         stdscr.refresh()
@@ -170,6 +179,11 @@ class TuiApp:
 
     def draw_sessions(self, width: int, height: int) -> None:
         curses = self.curses
+        if not self.threads:
+            add_text(self.stdscr, 2, 0, "No sessions found.", width, curses.A_BOLD)
+            add_text(self.stdscr, 3, 0, "Press n for new prompt.", width)
+            add_text(self.stdscr, 4, 0, "Press r to refresh.", width)
+            return
         end = min(len(self.threads), self.top + max(1, height - 1))
         for row, idx in enumerate(range(self.top, end), start=2):
             thread = self.threads[idx]
@@ -180,7 +194,8 @@ class TuiApp:
             add_text(self.stdscr, row, 0, line, width, attr)
 
     def draw_preview(self, x: int, y: int, width: int, height: int) -> None:
-        wrapped = wrap_lines(self.preview_lines(self.selected_thread()), width)
+        lines = self.empty_preview_lines() if not self.threads else self.preview_lines(self.selected_thread())
+        wrapped = wrap_lines(lines, width)
         self.preview_top = clamped_scroll_top(len(wrapped), height, self.preview_top)
         lines = wrapped[self.preview_top : self.preview_top + max(0, height)]
         row = y
@@ -200,7 +215,19 @@ class TuiApp:
             self.preview_cache[key] = text.splitlines()
         return self.preview_cache[key]
 
+    def empty_preview_lines(self) -> list[str]:
+        return [
+            "No Codex sessions found for the current filters.",
+            "",
+            "Press n to start a new Codex prompt through CodexPlus.",
+            "Use cxp doctor if Codex is not installed or not logged in.",
+            "Use r to refresh after Codex creates a session.",
+        ]
+
     def ask_selected(self) -> None:
+        if not self.threads:
+            self.status = "No selected session. Press n to start a new Codex prompt."
+            return
         prompt = self.read_prompt("Ask CodexPlus")
         if not prompt:
             self.status = "Ask cancelled."
@@ -371,9 +398,6 @@ def run_tui(
         )
 
     threads = load_threads()
-    if not threads:
-        print("No sessions found.")
-        return 0
 
     def runner(thread: ThreadRow, prompt: str, stdout: StreamOutput) -> int:
         return stream_selected_thread(thread, prompt, raw_json=raw_json, stdout=stdout)
@@ -381,7 +405,14 @@ def run_tui(
     def new_runner(prompt: str, stdout: StreamOutput) -> int:
         return stream_new_prompt(prompt, raw_json=raw_json, stdout=stdout)
 
-    return run_curses_app(TuiApp(threads, runner, new_stream_runner=new_runner, thread_loader=load_threads))
+    status = (
+        "Enter continues the selected session; n starts a new CodexPlus JSON stream."
+        if threads
+        else "No sessions found. Press n to start a new Codex prompt, or q to quit."
+    )
+    return run_curses_app(
+        TuiApp(threads, runner, new_stream_runner=new_runner, thread_loader=load_threads, status=status)
+    )
 
 
 def run_curses_app(app: TuiApp) -> int:

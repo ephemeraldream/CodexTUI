@@ -12,6 +12,7 @@ from pathlib import Path
 
 from . import __version__
 from .codex_stream import codex_exec_command, run_codex_json_stream
+from .doctor import diagnostics_exit_code, diagnostics_json, render_diagnostics, run_diagnostics
 from .file_nav import FileHit, file_hits_for_thread, render_file_hits
 from .fzf import PickerSelection, choose_file, choose_search_match, choose_thread, is_available
 from .models import SearchMatch
@@ -51,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"CodexPlus {__version__}")
     sub = parser.add_subparsers(
         dest="command",
-        metavar="{tui,browse,list,view,files,assistant,final,user,search,resume,stream,path,stats,install-shim,compress}",
+        metavar="{tui,browse,list,view,files,assistant,final,user,search,resume,stream,path,stats,doctor,install-shim,compress}",
     )
 
     def add_hidden_parser(name: str) -> argparse.ArgumentParser:
@@ -163,6 +164,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     stats_p = sub.add_parser("stats", help="show session counts")
     stats_p.set_defaults(func=stats)
+
+    doctor_p = sub.add_parser("doctor", help="check CodexPlus, Codex CLI, auth, and local history")
+    doctor_p.add_argument("--json", action="store_true", help="emit diagnostic checks as JSON")
+    doctor_p.add_argument("--strict", action="store_true", help="exit non-zero on warnings as well as failures")
+    doctor_p.add_argument("--codex-bin", help="Codex executable to check instead of auto-detecting")
+    doctor_p.set_defaults(func=doctor)
 
     preview_p = add_hidden_parser("preview")
     preview_p.add_argument("selector")
@@ -515,6 +522,16 @@ def stats(_: argparse.Namespace) -> int:
     for source, count in sorted(by_source.items(), key=lambda item: item[1], reverse=True):
         print(f"{source}: {count}")
     return 0
+
+
+def doctor(args: argparse.Namespace) -> int:
+    codex_bin = Path(args.codex_bin).expanduser() if args.codex_bin else None
+    checks = run_diagnostics(codex_bin=codex_bin)
+    if args.json:
+        print(diagnostics_json(checks), end="")
+    else:
+        print(render_diagnostics(checks), end="")
+    return diagnostics_exit_code(checks, strict=args.strict)
 
 
 def install_shim(args: argparse.Namespace) -> int:
