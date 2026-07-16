@@ -12,7 +12,9 @@ from codex_tui.theme import TuiTheme, build_curses_theme
 from codex_tui.tui import (
     CursesStreamWriter,
     TuiApp,
+    footer_help,
     line_attr,
+    preview_header,
     scroll_position_label,
     session_row_lines,
     status_line_attr,
@@ -238,7 +240,38 @@ class TuiTests(unittest.TestCase):
 
         app.draw()
 
-        self.assertEqual(screen.text_at(1, 28), "Preview: chat | 6-12/20")
+        self.assertEqual(screen.text_at(1, 28), "Preview [chat] asst final user files | 6-12/20")
+
+    def test_draw_app_header_includes_selected_session_context(self) -> None:
+        app = TuiApp(
+            [sample_thread("019f-test-one"), sample_thread("019f-test-two")],
+            lambda _thread, _prompt, _stdout: 0,
+            selected=1,
+        )
+        screen = RecordingWindow(height=12, width=80)
+        app.stdscr = screen
+
+        app.draw()
+
+        self.assertEqual(screen.text_at(0, 0), "CodexTUI | 2/2 019f-tes Build a TUI")
+
+    def test_preview_header_shows_active_mode_tab_and_responsive_fallback(self) -> None:
+        self.assertEqual(
+            preview_header("assistant", "all 4", width=80),
+            "Preview chat [asst] final user files | all 4",
+        )
+        self.assertEqual(preview_header("assistant", "6-12/20", width=28), "assistant | 6-12/20")
+
+    def test_footer_help_tracks_focus_and_empty_state(self) -> None:
+        self.assertEqual(
+            footer_help("sessions", has_threads=True),
+            "sessions: arrows select | enter resume | n new | r refresh | tab preview | q quit",
+        )
+        self.assertIn("o files", footer_help("preview", has_threads=True))
+        self.assertEqual(
+            footer_help("sessions", has_threads=False),
+            "n new prompt | r refresh | q quit | ctui doctor for setup",
+        )
 
     def test_draw_header_includes_session_scroll_position(self) -> None:
         threads = [sample_thread(f"019f-test-{idx}") for idx in range(8)]

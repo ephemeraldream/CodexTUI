@@ -15,6 +15,13 @@ from .transcript import format_ms, render_thread, short_id, truncate
 
 
 SESSION_ROW_HEIGHT = 2
+PREVIEW_MODE_TABS = (
+    ("chat", "chat"),
+    ("assistant", "asst"),
+    ("final", "final"),
+    ("user", "user"),
+    ("files", "files"),
+)
 
 
 class StreamOutput(Protocol):
@@ -151,7 +158,7 @@ class TuiApp:
             return
 
         theme = self.theme
-        add_text(stdscr, 0, 0, " CodexTUI ", width, theme.app_header)
+        add_text(stdscr, 0, 0, self.dashboard_header(width), width, theme.app_header)
         list_width = max(26, min(44, width // 3))
         preview_x = list_width + 2
         preview_width = max(1, width - preview_x)
@@ -164,20 +171,24 @@ class TuiApp:
         sessions_attr = theme.pane_active if self.focus == "sessions" else theme.pane_inactive
         preview_attr = theme.pane_active if self.focus == "preview" else theme.pane_inactive
         add_text(stdscr, 1, 0, f"Sessions | {sessions_scroll}", list_width, sessions_attr)
-        add_text(stdscr, 1, preview_x, f"Preview: {self.mode} | {preview_scroll}", preview_width, preview_attr)
+        add_text(stdscr, 1, preview_x, preview_header(self.mode, preview_scroll, preview_width), preview_width, preview_attr)
         for y in range(1, height - 2):
             add_text(stdscr, y, list_width, "|", 2, theme.divider)
 
         self.draw_sessions(list_width, body_height)
         self.draw_preview(preview_x, 2, preview_width, preview_height)
 
-        if self.threads:
-            help_text = "tab focus | arrows move/scroll | enter resume | n new | r refresh | v/a/f/u/o modes | q quit"
-        else:
-            help_text = "n new prompt | r refresh | q quit | run ctui doctor if Codex is not ready"
-        add_text(stdscr, height - 2, 0, help_text, width, theme.footer)
+        add_text(stdscr, height - 2, 0, footer_help(self.focus, has_threads=bool(self.threads)), width, theme.footer)
         add_text(stdscr, height - 1, 0, self.status, width, status_line_attr(self.status, theme))
         stdscr.refresh()
+
+    def dashboard_header(self, width: int) -> str:
+        if not self.threads:
+            return fit_header("CodexTUI | no sessions", width)
+        thread = self.selected_thread()
+        title = thread.title or thread.first_user_message or thread.preview or "(untitled)"
+        label = f"CodexTUI | {self.selected + 1}/{len(self.threads)} {short_id(thread.id)} {title}"
+        return fit_header(label, width)
 
     def keep_selected_visible(self, visible_count: int) -> None:
         visible_count = max(1, visible_count)
@@ -530,6 +541,37 @@ def add_text(window: object, y: int, x: int, text: str, width: int, attr: int = 
         window.addnstr(y, x, clean, max(0, width - 1), attr)
     except Exception:
         return
+
+
+def preview_header(mode: str, scroll_label: str, width: int) -> str:
+    full = f"Preview {preview_mode_tabs(mode)} | {scroll_label}"
+    if fits_terminal_width(full, width):
+        return full
+    compact = f"Preview: {mode} | {scroll_label}"
+    if fits_terminal_width(compact, width):
+        return compact
+    tight = f"{mode} | {scroll_label}"
+    return fit_header(tight, width)
+
+
+def preview_mode_tabs(active_mode: str) -> str:
+    return " ".join(f"[{label}]" if mode == active_mode else label for mode, label in PREVIEW_MODE_TABS)
+
+
+def footer_help(focus: str, *, has_threads: bool) -> str:
+    if not has_threads:
+        return "n new prompt | r refresh | q quit | ctui doctor for setup"
+    if focus == "preview":
+        return "preview: arrows/PgUp/PgDn scroll | v chat | a assistant | f final | u user | o files | tab sessions | q quit"
+    return "sessions: arrows select | enter resume | n new | r refresh | tab preview | q quit"
+
+
+def fit_header(text: str, width: int) -> str:
+    return truncate(text, max(0, width - 1))
+
+
+def fits_terminal_width(text: str, width: int) -> bool:
+    return len(text) <= max(0, width - 1)
 
 
 def line_attr(line: str, theme: TuiTheme) -> int:
