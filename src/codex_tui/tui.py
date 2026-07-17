@@ -227,9 +227,9 @@ class TuiApp:
 
     def draw_preview(self, x: int, y: int, width: int, height: int) -> None:
         lines = self.empty_preview_lines() if not self.threads else self.preview_lines(self.selected_thread(), width)
-        wrapped = wrap_lines(lines, width)
-        self.preview_top = clamped_scroll_top(len(wrapped), height, self.preview_top)
-        rows = styled_lines(wrapped, self.theme)[self.preview_top : self.preview_top + max(0, height)]
+        visual_rows = styled_wrapped_lines(lines, width, self.theme)
+        self.preview_top = clamped_scroll_top(len(visual_rows), height, self.preview_top)
+        rows = visual_rows[self.preview_top : self.preview_top + max(0, height)]
         row = y
         for line, attr in rows:
             if row >= y + height:
@@ -391,9 +391,9 @@ class TuiApp:
         lines = list(self.stream_lines)
         if current_line is not None:
             lines.append(current_line)
-        wrapped = wrap_lines(lines, width)
-        start = self.stream_start(len(wrapped), height)
-        return styled_lines(wrapped, self.theme)[start : start + height]
+        rows = styled_wrapped_lines(lines, width, self.theme)
+        start = self.stream_start(len(rows), height)
+        return rows[start : start + height]
 
     def stream_scroll_label(self, current_line: str | None, width: int, height: int) -> str:
         lines = list(self.stream_lines)
@@ -905,21 +905,31 @@ def is_error_activity(line: str) -> bool:
 
 def wrap_lines(lines: list[str], width: int) -> list[str]:
     result: list[str] = []
-    wrap_width = max(1, width - 1)
     for line in lines:
-        if not line:
-            result.append("")
-            continue
-        wrapped = textwrap.wrap(
-            line,
-            width=wrap_width,
-            replace_whitespace=False,
-            drop_whitespace=False,
-            break_long_words=True,
-            break_on_hyphens=False,
-        )
-        result.extend(wrapped or [""])
+        result.extend(wrap_line(line, width))
     return result
+
+
+def styled_wrapped_lines(lines: list[str], width: int, theme: TuiTheme) -> list[tuple[str, int]]:
+    result: list[tuple[str, int]] = []
+    for line, attr in styled_lines(lines, theme):
+        result.extend((wrapped, attr) for wrapped in wrap_line(line, width))
+    return result
+
+
+def wrap_line(line: str, width: int) -> list[str]:
+    wrap_width = max(1, width - 1)
+    if not line:
+        return [""]
+    wrapped = textwrap.wrap(
+        line,
+        width=wrap_width,
+        replace_whitespace=False,
+        drop_whitespace=False,
+        break_long_words=True,
+        break_on_hyphens=False,
+    )
+    return wrapped or [""]
 
 
 def visible_lines(lines: list[str], width: int, height: int, top: int) -> list[str]:

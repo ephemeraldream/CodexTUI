@@ -438,6 +438,20 @@ class TuiTests(unittest.TestCase):
 
         self.assertEqual(rows, [("2 failed, 1 passed", 70)])
 
+    def test_visible_stream_rows_keep_activity_style_on_wrapped_continuations(self) -> None:
+        app = TuiApp(
+            [sample_thread()],
+            lambda _thread, _prompt, _stdout: 0,
+            theme=TuiTheme(status_muted=40),
+        )
+        app.stream_lines = ["[tokens] last 71.6k, session 231.5k, context 231.5k / 258.4k (89.6%)"]
+
+        rows = app.visible_stream_rows(None, width=24, height=5)
+
+        self.assertGreater(len(rows), 1)
+        self.assertTrue(rows[0][0].startswith("[tokens]"))
+        self.assertTrue(all(attr == 40 for _line, attr in rows))
+
     def test_status_line_attr_marks_failures_prominently(self) -> None:
         theme = TuiTheme(status_muted=4, status_error=8)
 
