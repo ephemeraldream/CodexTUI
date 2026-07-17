@@ -77,9 +77,9 @@ class TuiApp:
             elif key in (curses.KEY_DOWN, ord("j")):
                 self.move_focused(1)
             elif key in (curses.KEY_NPAGE,):
-                self.move_focused(10)
+                self.page_focused(1)
             elif key in (curses.KEY_PPAGE,):
-                self.move_focused(-10)
+                self.page_focused(-1)
             elif key in (ord("v"),):
                 self.set_mode("chat")
             elif key in (ord("f"),):
@@ -114,6 +114,14 @@ class TuiApp:
             self.scroll_preview(delta)
             return
         self.move_selection(delta)
+
+    def page_focused(self, direction: int) -> None:
+        height, _width = self.stdscr.getmaxyx()
+        page_height = dashboard_body_height(height)
+        if self.focus == "preview":
+            self.scroll_preview(direction * page_height)
+            return
+        self.move_selection(direction * visible_session_count(page_height))
 
     def scroll_preview(self, delta: int) -> None:
         self.preview_top = max(0, self.preview_top + delta)
@@ -164,7 +172,7 @@ class TuiApp:
         list_width = max(26, min(44, width // 3))
         preview_x = list_width + 2
         preview_width = max(1, width - preview_x)
-        body_height = height - 4
+        body_height = dashboard_body_height(height)
         preview_height = body_height
         self.keep_selected_visible(visible_session_count(body_height))
         sessions_scroll = self.session_scroll_label(body_height)
@@ -415,7 +423,13 @@ class TuiApp:
 
     def scroll_stream(self, delta: int) -> None:
         height, width = self.stdscr.getmaxyx()
-        self.scroll_stream_view(delta, width, max(1, height - 3))
+        self.scroll_stream_view(delta, width, stream_body_height(height))
+        self.draw_stream()
+
+    def scroll_stream_page(self, direction: int) -> None:
+        height, width = self.stdscr.getmaxyx()
+        body_height = stream_body_height(height)
+        self.scroll_stream_view(direction * body_height, width, body_height)
         self.draw_stream()
 
     def review_stream(self) -> None:
@@ -430,9 +444,9 @@ class TuiApp:
             elif key in (curses.KEY_DOWN, ord("j")):
                 self.scroll_stream(1)
             elif key in (curses.KEY_PPAGE,):
-                self.scroll_stream(-10)
+                self.scroll_stream_page(-1)
             elif key in (curses.KEY_NPAGE,):
-                self.scroll_stream(10)
+                self.scroll_stream_page(1)
 
     def read_prompt(self, label: str) -> str:
         curses = self.curses
@@ -986,6 +1000,14 @@ def scroll_position_label(total_lines: int, height: int, top: int) -> str:
 
 def visible_session_count(height: int) -> int:
     return max(1, height // SESSION_ROW_HEIGHT)
+
+
+def dashboard_body_height(height: int) -> int:
+    return max(1, height - 4)
+
+
+def stream_body_height(height: int) -> int:
+    return max(1, height - 3)
 
 
 def session_row_lines(thread: ThreadRow, marker: str, width: int) -> tuple[str, str]:

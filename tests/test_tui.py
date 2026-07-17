@@ -758,6 +758,21 @@ class TuiTests(unittest.TestCase):
         app.scroll_stream_view(99, width=20, height=2)
         self.assertEqual(app.stream_top, 3)
 
+    def test_stream_page_scroll_uses_visible_body_height(self) -> None:
+        app = TuiApp([sample_thread()], lambda _thread, _prompt, _stdout: 0)
+        app.stream_lines = [f"line {index}" for index in range(12)]
+        app.stdscr = RecordingWindow(height=8, width=80)
+        app.draw_stream = lambda _current_line=None: None  # type: ignore[method-assign]
+
+        app.scroll_stream_page(-1)
+
+        self.assertEqual(app.stream_top, 2)
+        self.assertEqual(app.status, "Stream scroll: line 3.")
+
+        app.scroll_stream_page(1)
+
+        self.assertEqual(app.stream_top, 7)
+
     def test_draw_stream_header_includes_scroll_position(self) -> None:
         app = TuiApp(
             [sample_thread()],
@@ -786,6 +801,25 @@ class TuiTests(unittest.TestCase):
         app.move_focused(3)
         self.assertEqual(app.selected, 1)
         self.assertEqual(app.preview_top, 3)
+
+    def test_page_focused_uses_visible_dashboard_body_size(self) -> None:
+        threads = [sample_thread(f"019f-test-{index}") for index in range(10)]
+        app = TuiApp(threads, lambda _thread, _prompt, _stdout: 0)
+        app.stdscr = RecordingWindow(height=12, width=80)
+
+        app.page_focused(1)
+
+        self.assertEqual(app.selected, 4)
+
+        app.page_focused(-1)
+
+        self.assertEqual(app.selected, 0)
+
+        app.focus = "preview"
+        app.page_focused(1)
+
+        self.assertEqual(app.preview_top, 8)
+        self.assertEqual(app.status, "Preview scroll: line 9.")
 
     def test_selection_and_mode_changes_reset_preview_scroll(self) -> None:
         app = TuiApp(
