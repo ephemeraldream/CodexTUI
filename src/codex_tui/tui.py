@@ -727,20 +727,26 @@ def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
     in_error_activity = False
     current_role_body = 0
     current_role_header = 0
+    current_activity_body = 0
+    current_activity_header = 0
     for line in lines:
         stripped = line.strip()
         fence = is_code_fence(stripped)
         detect_blocks = not in_code_block and not fence
         starts_tool_output = detect_blocks and stripped.startswith("[tool output]")
         starts_error_activity = detect_blocks and is_error_activity(stripped)
+        starts_activity_detail = detect_blocks and has_activity_detail_body(stripped)
         role_body_attr = role_body_attr_for_header(stripped, theme) if detect_blocks else None
         starts_role_block = role_body_attr is not None
         starts_new_block = (detect_blocks and is_activity_header(stripped)) or starts_role_block
-        markdown_attr = markdown_structure_attr(stripped, current_role_header, theme)
+        markdown_attr = markdown_structure_attr(stripped, current_role_header or current_activity_header, theme)
         if starts_new_block and not starts_tool_output:
             in_tool_output = False
         if starts_new_block and not starts_error_activity:
             in_error_activity = False
+        if starts_new_block and not starts_activity_detail:
+            current_activity_body = 0
+            current_activity_header = 0
         if starts_new_block:
             current_role_body = role_body_attr or 0
             current_role_header = line_attr(line, theme) if starts_role_block else 0
@@ -758,6 +764,14 @@ def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
             attr = line_attr(line, theme)
             in_error_activity = True
             current_role_body = 0
+            current_activity_body = 0
+            current_activity_header = 0
+        elif starts_activity_detail:
+            attr = line_attr(line, theme)
+            current_activity_body = theme.status_muted
+            current_activity_header = attr
+            current_role_body = 0
+            current_role_header = 0
         elif starts_role_block:
             attr = line_attr(line, theme)
         elif in_tool_output:
@@ -766,6 +780,8 @@ def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
             attr = theme.status_error
         elif markdown_attr:
             attr = markdown_attr
+        elif current_activity_body:
+            attr = current_activity_body
         elif current_role_body:
             attr = current_role_body
         else:
@@ -842,6 +858,10 @@ def is_activity_header(line: str) -> bool:
             "[item]",
         )
     )
+
+
+def has_activity_detail_body(line: str) -> bool:
+    return line.startswith(("[plan]", "[item]"))
 
 
 def role_body_attr_for_header(line: str, theme: TuiTheme) -> int | None:

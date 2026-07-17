@@ -354,6 +354,42 @@ class TuiTests(unittest.TestCase):
             ],
         )
 
+    def test_styled_lines_groups_plan_activity_details_until_next_block(self) -> None:
+        theme = TuiTheme(
+            status_muted=40,
+            tool_header=60,
+            divider=45,
+            code=70,
+        )
+
+        rows = styled_lines(
+            [
+                "[plan] completed",
+                "# Plan",
+                "",
+                "1. Inspect stream polish.",
+                "| Area | Status |",
+                "| ---- | ------ |",
+                "| plan | grouped |",
+                "[task] Stream finished.",
+            ],
+            theme,
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                ("[plan] completed", 60),
+                ("# Plan", 60),
+                ("", 40),
+                ("1. Inspect stream polish.", 40),
+                ("| Area | Status |", 70),
+                ("| ---- | ------ |", 45),
+                ("| plan | grouped |", 70),
+                ("[task] Stream finished.", 40),
+            ],
+        )
+
     def test_draw_preview_styles_code_body_when_scrolled_inside_block(self) -> None:
         app = TuiApp(
             [sample_thread()],
