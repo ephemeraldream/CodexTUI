@@ -224,6 +224,33 @@ class TuiTests(unittest.TestCase):
             ],
         )
 
+    def test_styled_lines_styles_failed_tool_output_as_error(self) -> None:
+        theme = TuiTheme(status_error=50, status_muted=40, tool_header=60, code=70)
+
+        rows = styled_lines(
+            [
+                "[tool] exec_command failed: pytest",
+                "[tool output] exec_command",
+                "AssertionError",
+                "",
+                "tests/test_app.py:12",
+                "[task] Stream finished.",
+            ],
+            theme,
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                ("[tool] exec_command failed: pytest", 50),
+                ("[tool output] exec_command", 50),
+                ("AssertionError", 50),
+                ("", 50),
+                ("tests/test_app.py:12", 50),
+                ("[task] Stream finished.", 40),
+            ],
+        )
+
     def test_styled_lines_styles_role_block_bodies_until_next_block(self) -> None:
         theme = TuiTheme(
             user_header=10,
@@ -467,6 +494,23 @@ class TuiTests(unittest.TestCase):
                 ("[tokens] input 10, output 2", 40),
             ],
         )
+
+    def test_visible_stream_rows_styles_scrolled_failed_tool_output_body_as_error(self) -> None:
+        app = TuiApp(
+            [sample_thread()],
+            lambda _thread, _prompt, _stdout: 0,
+            theme=TuiTheme(status_error=50, tool_header=60, code=70),
+        )
+        app.stream_lines = [
+            "[tool] exec_command failed: pytest",
+            "[tool output] exec_command",
+            "AssertionError",
+        ]
+        app.stream_top = 2
+
+        rows = app.visible_stream_rows(None, width=80, height=1)
+
+        self.assertEqual(rows, [("AssertionError", 50)])
 
     def test_visible_stream_rows_keep_activity_style_on_wrapped_continuations(self) -> None:
         app = TuiApp(

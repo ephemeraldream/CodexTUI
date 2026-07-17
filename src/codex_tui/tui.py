@@ -791,12 +791,18 @@ def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
     current_role_header = 0
     current_activity_body = 0
     current_activity_header = 0
+    failed_tool_output_label: str | None = None
     for line in lines:
         stripped = line.strip()
         fence = is_code_fence(stripped)
         detect_blocks = not in_code_block and not fence
         starts_tool_output = detect_blocks and stripped.startswith("[tool output]")
         starts_error_activity = detect_blocks and is_error_activity(stripped)
+        tool_output_label = activity_label(stripped, "[tool output]") if starts_tool_output else None
+        failed_tool_output = bool(
+            starts_tool_output and tool_output_label and tool_output_label == failed_tool_output_label
+        )
+        error_activity = starts_error_activity or failed_tool_output
         starts_activity_detail = detect_blocks and has_activity_detail_body(stripped)
         role_body_attr = role_body_attr_for_header(stripped, theme) if detect_blocks else None
         starts_role_block = role_body_attr is not None
@@ -804,28 +810,31 @@ def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
         markdown_attr = markdown_structure_attr(stripped, current_role_header or current_activity_header, theme)
         if starts_new_block and not starts_tool_output:
             in_tool_output = False
-        if starts_new_block and not starts_error_activity:
+        if starts_new_block and not error_activity:
             in_error_activity = False
         if starts_new_block and not starts_activity_detail:
             current_activity_body = 0
             current_activity_header = 0
+        if starts_new_block and not starts_tool_output:
+            failed_tool_output_label = None
         if starts_new_block:
             current_role_body = role_body_attr or 0
             current_role_header = line_attr(line, theme) if starts_role_block else 0
             markdown_attr = 0
         if in_code_block or fence:
             attr = theme.code
+        elif error_activity:
+            attr = line_attr(line, theme) if starts_error_activity else theme.status_error
+            in_error_activity = True
+            in_tool_output = False
+            current_role_body = 0
+            current_activity_body = 0
+            current_activity_header = 0
         elif starts_tool_output:
             attr = line_attr(line, theme)
             in_tool_output = True
             in_error_activity = False
             current_role_body = 0
-        elif starts_error_activity:
-            attr = line_attr(line, theme)
-            in_error_activity = True
-            current_role_body = 0
-            current_activity_body = 0
-            current_activity_header = 0
         elif starts_activity_detail:
             attr = line_attr(line, theme)
             current_activity_body = theme.status_muted
@@ -847,6 +856,10 @@ def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
         else:
             attr = line_attr(line, theme)
         result.append((line, attr))
+        if detect_blocks and stripped.startswith("[tool]") and is_error_activity(stripped):
+            failed_tool_output_label = activity_label(stripped, "[tool]")
+        elif starts_tool_output:
+            failed_tool_output_label = None
         if fence:
             in_code_block = not in_code_block
     return result
@@ -918,6 +931,21 @@ def is_activity_header(line: str) -> bool:
             "[item]",
         )
     )
+
+
+def activity_label(line: str, prefix: str) -> str | None:
+    if not line.startswith(prefix):
+        return None
+    rest = line[len(prefix) :].strip()
+    if not rest:
+        return None
+    if ":" in rest:
+        rest = rest.split(":", 1)[0].strip()
+    for marker in (" failed", " error", " exited", " aborted", " applied"):
+        marker_index = rest.find(marker)
+        if marker_index > 0:
+            rest = rest[:marker_index].strip()
+    return rest or None
 
 
 def has_activity_detail_body(line: str) -> bool:
