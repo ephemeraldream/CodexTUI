@@ -895,10 +895,10 @@ def looks_like_compact_time(value: str) -> bool:
 
 
 def is_error_activity(line: str) -> bool:
-    if not line.startswith(("[task]", "[tool]", "[tool output]", "[item]")):
+    if not line.startswith(("[task]", "[tool]", "[tool output]", "[tokens]", "[item]")):
         return False
     lowered = line.casefold()
-    return any(marker in lowered for marker in ("failed", "error", "exited with status", "aborted"))
+    return any(marker in lowered for marker in ("failed", "error", "exited with status", "aborted", "limit reached"))
 
 
 def wrap_lines(lines: list[str], width: int) -> list[str]:

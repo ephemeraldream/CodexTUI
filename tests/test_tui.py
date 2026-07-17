@@ -151,6 +151,7 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(line_attr("CODEX final 10:02", theme), 30)
         self.assertEqual(line_attr("[tool] exec_command: python3 -m unittest", theme), 60)
         self.assertEqual(line_attr("[tokens] input 10k, output 2k", theme), 40)
+        self.assertEqual(line_attr("[tokens] rate primary 100%, limit reached: primary", theme), 50)
         self.assertEqual(line_attr("[task] Codex turn failed: auth expired", theme), 50)
         self.assertEqual(line_attr("[task] Codex turn aborted: interrupted", theme), 50)
         self.assertEqual(line_attr("```python", theme), 70)
