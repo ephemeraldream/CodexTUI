@@ -816,10 +816,27 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app.selected, 0)
 
         app.focus = "preview"
+        app.preview_lines = (  # type: ignore[method-assign]
+            lambda _thread, width=None: [f"line {index}" for index in range(20)]
+        )
         app.page_focused(1)
 
         self.assertEqual(app.preview_top, 8)
         self.assertEqual(app.status, "Preview scroll: line 9.")
+
+    def test_preview_scrollback_clamps_to_available_output(self) -> None:
+        app = TuiApp([sample_thread()], lambda _thread, _prompt, _stdout: 0)
+        app.preview_lines = (  # type: ignore[method-assign]
+            lambda _thread, width=None: [f"line {index}" for index in range(12)]
+        )
+
+        app.scroll_preview_view(99, width=40, height=5)
+        self.assertEqual(app.preview_top, 7)
+        self.assertEqual(app.status, "Preview scroll: line 8.")
+
+        app.scroll_preview_view(-99, width=40, height=5)
+        self.assertEqual(app.preview_top, 0)
+        self.assertEqual(app.status, "Preview scroll: line 1.")
 
     def test_selection_and_mode_changes_reset_preview_scroll(self) -> None:
         app = TuiApp(

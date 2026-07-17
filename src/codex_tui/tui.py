@@ -116,15 +116,26 @@ class TuiApp:
         self.move_selection(delta)
 
     def page_focused(self, direction: int) -> None:
-        height, _width = self.stdscr.getmaxyx()
+        height, width = self.stdscr.getmaxyx()
         page_height = dashboard_body_height(height)
         if self.focus == "preview":
-            self.scroll_preview(direction * page_height)
+            self.scroll_preview_view(direction * page_height, dashboard_preview_width(width), page_height)
             return
         self.move_selection(direction * visible_session_count(page_height))
 
     def scroll_preview(self, delta: int) -> None:
+        screen = getattr(self, "stdscr", None)
+        if screen is not None:
+            height, width = screen.getmaxyx()
+            self.scroll_preview_view(delta, dashboard_preview_width(width), dashboard_body_height(height))
+            return
         self.preview_top = max(0, self.preview_top + delta)
+        self.status = f"Preview scroll: line {self.preview_top + 1}."
+
+    def scroll_preview_view(self, delta: int, width: int, height: int) -> None:
+        wrapped = wrap_lines(self.current_preview_lines(width), width)
+        current = clamped_scroll_top(len(wrapped), height, self.preview_top)
+        self.preview_top = clamped_scroll_top(len(wrapped), height, current + delta)
         self.status = f"Preview scroll: line {self.preview_top + 1}."
 
     def toggle_focus(self) -> None:
@@ -169,9 +180,9 @@ class TuiApp:
 
         theme = self.theme
         add_text(stdscr, 0, 0, self.dashboard_header(width), width, theme.app_header)
-        list_width = max(26, min(44, width // 3))
+        list_width = dashboard_list_width(width)
         preview_x = list_width + 2
-        preview_width = max(1, width - preview_x)
+        preview_width = dashboard_preview_width(width)
         body_height = dashboard_body_height(height)
         preview_height = body_height
         self.keep_selected_visible(visible_session_count(body_height))
@@ -234,7 +245,7 @@ class TuiApp:
             row += SESSION_ROW_HEIGHT
 
     def draw_preview(self, x: int, y: int, width: int, height: int) -> None:
-        lines = self.empty_preview_lines() if not self.threads else self.preview_lines(self.selected_thread(), width)
+        lines = self.current_preview_lines(width)
         visual_rows = styled_wrapped_lines(lines, width, self.theme)
         self.preview_top = clamped_scroll_top(len(visual_rows), height, self.preview_top)
         rows = visual_rows[self.preview_top : self.preview_top + max(0, height)]
@@ -246,10 +257,13 @@ class TuiApp:
             row += 1
 
     def preview_scroll_label(self, width: int, height: int) -> str:
-        lines = self.empty_preview_lines() if not self.threads else self.preview_lines(self.selected_thread(), width)
+        lines = self.current_preview_lines(width)
         wrapped = wrap_lines(lines, width)
         self.preview_top = clamped_scroll_top(len(wrapped), height, self.preview_top)
         return scroll_position_label(len(wrapped), height, self.preview_top)
+
+    def current_preview_lines(self, width: int | None = None) -> list[str]:
+        return self.empty_preview_lines() if not self.threads else self.preview_lines(self.selected_thread(), width)
 
     def preview_lines(self, thread: ThreadRow, width: int | None = None) -> list[str]:
         cache_width = max(0, width or 0)
@@ -1000,6 +1014,14 @@ def scroll_position_label(total_lines: int, height: int, top: int) -> str:
 
 def visible_session_count(height: int) -> int:
     return max(1, height // SESSION_ROW_HEIGHT)
+
+
+def dashboard_list_width(width: int) -> int:
+    return max(26, min(44, width // 3))
+
+
+def dashboard_preview_width(width: int) -> int:
+    return max(1, width - dashboard_list_width(width) - 2)
 
 
 def dashboard_body_height(height: int) -> int:
