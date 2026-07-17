@@ -493,8 +493,7 @@ class TuiApp:
         height, width = self.stdscr.getmaxyx()
         prompt = prompt_entry_prefix(label, width)
         y = height - 1
-        add_text(self.stdscr, y, 0, " " * max(0, width - 1), width)
-        add_text(self.stdscr, y, 0, prompt, width, self.theme.footer)
+        add_chrome(self.stdscr, y, 0, prompt, width, self.theme.footer)
         self.stdscr.refresh()
         curses.echo()
         safe_curs_set(curses, 1)

@@ -740,7 +740,7 @@ class TuiTests(unittest.TestCase):
         result = app.read_prompt("New Codex prompt")
 
         self.assertEqual(result, "Continue here")
-        self.assertEqual(screen.writes[-1], (5, 0, "New: ", 4))
+        self.assertEqual(screen.writes[-1], (5, 0, "New: ".ljust(19), 4))
         self.assertEqual(screen.getstr_calls[-1], (5, 5, 14))
 
     def test_draw_footer_uses_terminal_width(self) -> None:
