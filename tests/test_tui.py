@@ -900,6 +900,22 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(header.startswith(" CodexTUI Stream | resume | 2-5/6 "))
         self.assertEqual(len(header), 49)
 
+    def test_draw_stream_shows_waiting_placeholder_before_first_output(self) -> None:
+        app = TuiApp(
+            [sample_thread()],
+            lambda _thread, _prompt, _stdout: 0,
+            theme=TuiTheme(status_muted=4),
+        )
+        screen = RecordingWindow(height=7, width=50)
+        app.stdscr = screen
+
+        app.draw_stream()
+
+        header = screen.text_at(0, 0)
+        self.assertTrue(header.startswith(" CodexTUI Stream | resume | waiting "))
+        self.assertEqual(screen.text_at(1, 0), "Waiting for Codex output...".ljust(49))
+        self.assertEqual(screen.attr_at(1, 0), 4)
+
     def test_focus_toggle_moves_arrows_between_sessions_and_preview(self) -> None:
         app = TuiApp(
             [sample_thread("019f-test-one"), sample_thread("019f-test-two")],

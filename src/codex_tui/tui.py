@@ -23,6 +23,7 @@ PREVIEW_MODE_TABS = (
     ("files", "files"),
 )
 DEFAULT_TUI_STATUS = "Enter resumes the selected session; n starts a new prompt."
+STREAM_WAITING_LINE = "Waiting for Codex output..."
 
 
 class StreamOutput(Protocol):
@@ -434,6 +435,8 @@ class TuiApp:
         lines = list(self.stream_lines)
         if current_line is not None:
             lines.append(current_line)
+        if not lines and not self.stream_reviewing:
+            return [(padded_line(STREAM_WAITING_LINE, width), self.theme.status_muted)]
         rows = styled_wrapped_lines(lines, width, self.theme)
         start = self.stream_start(len(rows), height)
         return rows[start : start + height]
@@ -442,6 +445,8 @@ class TuiApp:
         lines = list(self.stream_lines)
         if current_line is not None:
             lines.append(current_line)
+        if not lines and not self.stream_reviewing:
+            return "waiting"
         wrapped = wrap_lines(lines, width)
         start = self.stream_start(len(wrapped), height)
         return scroll_position_label(len(wrapped), height, start)
