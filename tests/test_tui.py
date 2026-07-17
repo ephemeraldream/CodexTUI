@@ -801,6 +801,24 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(len(screen.text_at(5, 0)), 41)
         self.assertEqual(screen.attr_at(5, 0), 9)
 
+    def test_draw_empty_sessions_uses_padded_muted_guidance_rows(self) -> None:
+        app = TuiApp(
+            [],
+            lambda _thread, _prompt, _stdout: 0,
+            theme=TuiTheme(status_muted=4),
+        )
+        screen = RecordingWindow()
+        app.stdscr = screen
+
+        app.draw_sessions(width=26, height=4)
+
+        self.assertEqual(screen.text_at(2, 0), "No sessions found.".ljust(25))
+        self.assertEqual(screen.text_at(3, 0), "Press n for new prompt.".ljust(25))
+        self.assertEqual(screen.text_at(4, 0), "Press r to refresh.".ljust(25))
+        self.assertEqual(screen.attr_at(2, 0), 4)
+        self.assertEqual(screen.attr_at(3, 0), 4)
+        self.assertEqual(screen.attr_at(4, 0), 4)
+
     def test_stream_view_auto_follows_until_user_scrolls(self) -> None:
         app = TuiApp([sample_thread()], lambda _thread, _prompt, _stdout: 0)
         app.stream_lines = ["one", "two", "three", "four"]

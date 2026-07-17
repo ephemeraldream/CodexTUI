@@ -239,9 +239,10 @@ class TuiApp:
     def draw_sessions(self, width: int, height: int) -> None:
         theme = self.theme
         if not self.threads:
-            add_text(self.stdscr, 2, 0, "No sessions found.", width, theme.pane_inactive)
-            add_text(self.stdscr, 3, 0, "Press n for new prompt.", width)
-            add_text(self.stdscr, 4, 0, "Press r to refresh.", width)
+            for offset, line in enumerate(empty_session_lines(width)):
+                if offset >= height:
+                    break
+                add_text(self.stdscr, 2 + offset, 0, line, width, theme.status_muted)
             return
         end = min(len(self.threads), self.top + visible_session_count(height))
         row = 2
@@ -625,12 +626,24 @@ def add_chrome(window: object, y: int, x: int, text: str, width: int, attr: int 
 
 
 def chrome_line(text: str, width: int) -> str:
+    return padded_line(text, width)
+
+
+def padded_line(text: str, width: int) -> str:
     drawable_width = max(0, width - 1)
     if drawable_width <= 0:
         return ""
     if len(text) <= drawable_width:
         return text.ljust(drawable_width)
     return fit_header(text, width).ljust(drawable_width)
+
+
+def empty_session_lines(width: int) -> list[str]:
+    return [
+        padded_line("No sessions found.", width),
+        padded_line("Press n for new prompt.", width),
+        padded_line("Press r to refresh.", width),
+    ]
 
 
 def preview_header(mode: str, scroll_label: str, width: int) -> str:
