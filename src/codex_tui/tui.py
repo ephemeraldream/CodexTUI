@@ -237,6 +237,8 @@ class TuiApp:
             marker = ">" if idx == self.selected else " "
             title_line, metadata_line = session_row_lines(thread, marker, width)
             selected = idx == self.selected
+            title_line = session_display_line(title_line, width, selected)
+            metadata_line = session_display_line(metadata_line, width, selected)
             title_attr = theme.selection if selected else 0
             metadata_attr = theme.selection if selected else theme.status_muted
             add_text(self.stdscr, row, 0, title_line, width, title_attr)
@@ -1065,6 +1067,12 @@ def session_row_lines(thread: ThreadRow, marker: str, width: int) -> tuple[str, 
     title_line = prefixed_session_line(f"{marker} ", title, width)
     metadata_line = prefixed_session_line("  ", session_metadata(thread, width), width)
     return title_line, metadata_line
+
+
+def session_display_line(line: str, width: int, selected: bool) -> str:
+    if not selected:
+        return line
+    return line.ljust(max(0, width - 1))
 
 
 def prefixed_session_line(prefix: str, text: str, width: int) -> str:

@@ -778,8 +778,11 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(screen.text_at(2, 0), "  Build a TUI")
         self.assertIn("019f-tes", screen.text_at(3, 0))
         self.assertEqual(screen.attr_at(3, 0), 4)
-        self.assertEqual(screen.text_at(4, 0), "> Build a TUI")
+        self.assertTrue(screen.text_at(4, 0).startswith("> Build a TUI"))
+        self.assertEqual(len(screen.text_at(4, 0)), 41)
         self.assertEqual(screen.attr_at(4, 0), 9)
+        self.assertTrue(screen.text_at(5, 0).startswith("  019f-tes"))
+        self.assertEqual(len(screen.text_at(5, 0)), 41)
         self.assertEqual(screen.attr_at(5, 0), 9)
 
     def test_stream_view_auto_follows_until_user_scrolls(self) -> None:
