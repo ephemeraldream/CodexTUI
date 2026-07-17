@@ -605,8 +605,10 @@ class TuiTests(unittest.TestCase):
         )
         self.assertEqual(
             preview_footer,
-            "preview: scroll | v chat | a asst | f final | u user | o files | tab | q quit",
+            "preview: scroll | modes v/a/f/u/o | enter resume | n new | r refresh | tab | q",
         )
+        self.assertIn("enter resume", preview_footer)
+        self.assertIn("r refresh", preview_footer)
         self.assertEqual(narrow_preview_footer, "scroll | modes v/a/f/u/o | tab | q")
         self.assertLessEqual(len(sessions_footer), 79)
         self.assertLessEqual(len(preview_footer), 79)
@@ -626,7 +628,7 @@ class TuiTests(unittest.TestCase):
 
         self.assertEqual(
             screen.text_at(10, 0),
-            "preview: scroll | v chat | a asst | f final | u user | o files | tab | q quit",
+            "preview: scroll | modes v/a/f/u/o | enter resume | n new | r refresh | tab | q",
         )
 
     def test_draw_header_includes_session_scroll_position(self) -> None:

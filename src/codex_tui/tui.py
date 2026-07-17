@@ -665,7 +665,8 @@ def footer_help(focus: str, *, has_threads: bool, width: int | None = None) -> s
         return fit_footer(
             [
                 "preview: arrows/PgUp/PgDn scroll | v chat | a assistant | f final | u user | o files | tab sessions | q quit",
-                "preview: scroll | v chat | a asst | f final | u user | o files | tab | q quit",
+                "preview: scroll | modes v/a/f/u/o | enter resume | n new | r refresh | tab | q",
+                "scroll | modes v/a/f/u/o | enter resume | n new | r refresh | tab | q",
                 "scroll | modes v/a/f/u/o | tab | q",
                 "preview | scroll | tab | q",
             ],
