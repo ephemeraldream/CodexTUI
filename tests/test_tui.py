@@ -815,8 +815,9 @@ class TuiTests(unittest.TestCase):
 
         app.draw_sessions(width=42, height=4)
 
-        self.assertEqual(screen.text_at(2, 0), "  Build a TUI")
+        self.assertEqual(screen.text_at(2, 0), "  Build a TUI".ljust(41))
         self.assertIn("019f-tes", screen.text_at(3, 0))
+        self.assertEqual(len(screen.text_at(3, 0)), 41)
         self.assertEqual(screen.attr_at(3, 0), 4)
         self.assertTrue(screen.text_at(4, 0).startswith("> Build a TUI"))
         self.assertEqual(len(screen.text_at(4, 0)), 41)
