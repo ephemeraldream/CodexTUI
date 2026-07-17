@@ -751,8 +751,6 @@ def styled_lines(lines: list[str], theme: TuiTheme) -> list[tuple[str, int]]:
             current_role_body = role_body_attr or 0
             current_role_header = line_attr(line, theme) if starts_role_block else 0
             markdown_attr = 0
-        if not stripped:
-            in_error_activity = False
         if in_code_block or fence:
             attr = theme.code
         elif starts_tool_output:

@@ -438,6 +438,33 @@ class TuiTests(unittest.TestCase):
 
         self.assertEqual(rows, [("2 failed, 1 passed", 70)])
 
+    def test_visible_stream_rows_keeps_error_style_across_blank_detail_lines(self) -> None:
+        app = TuiApp(
+            [sample_thread()],
+            lambda _thread, _prompt, _stdout: 0,
+            theme=TuiTheme(status_error=50, status_muted=40),
+        )
+        app.stream_lines = [
+            "[task] Codex turn failed: command failed",
+            "Traceback first line",
+            "",
+            "Traceback final line",
+            "[tokens] input 10, output 2",
+        ]
+
+        rows = app.visible_stream_rows(None, width=80, height=10)
+
+        self.assertEqual(
+            rows,
+            [
+                ("[task] Codex turn failed: command failed", 50),
+                ("Traceback first line", 50),
+                ("", 50),
+                ("Traceback final line", 50),
+                ("[tokens] input 10, output 2", 40),
+            ],
+        )
+
     def test_visible_stream_rows_keep_activity_style_on_wrapped_continuations(self) -> None:
         app = TuiApp(
             [sample_thread()],
