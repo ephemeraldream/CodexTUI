@@ -528,7 +528,21 @@ class TuiTests(unittest.TestCase):
 
         app.draw()
 
-        self.assertEqual(screen.text_at(1, 28), "Preview [chat] asst final user files | 6-12/20")
+        self.assertEqual(screen.text_at(1, 28), "Preview [chat] asst final user files | 6-13/20")
+
+    def test_draw_preview_uses_full_body_height_above_footer(self) -> None:
+        app = TuiApp(
+            [sample_thread()],
+            lambda _thread, _prompt, _stdout: 0,
+        )
+        app.preview_lines = lambda _thread, _width=None: [f"line {index}" for index in range(20)]  # type: ignore[method-assign]
+        screen = RecordingWindow(height=12, width=80)
+        app.stdscr = screen
+
+        app.draw()
+
+        self.assertEqual(screen.text_at(9, 28), "line 7")
+        self.assertEqual(screen.text_at(10, 0), footer_help("sessions", has_threads=True, width=80))
 
     def test_draw_app_header_includes_selected_session_context(self) -> None:
         app = TuiApp(

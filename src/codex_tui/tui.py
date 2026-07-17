@@ -165,7 +165,7 @@ class TuiApp:
         preview_x = list_width + 2
         preview_width = max(1, width - preview_x)
         body_height = height - 4
-        preview_height = body_height - 1
+        preview_height = body_height
         self.keep_selected_visible(visible_session_count(body_height))
         sessions_scroll = self.session_scroll_label(body_height)
         preview_scroll = self.preview_scroll_label(preview_width, preview_height)
