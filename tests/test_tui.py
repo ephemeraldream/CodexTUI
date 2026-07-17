@@ -324,6 +324,36 @@ class TuiTests(unittest.TestCase):
 
         self.assertEqual(rows, [("CODEX", 20), ("  ## Result", 20), ("  Body text.", 0)])
 
+    def test_styled_lines_styles_markdown_tables_inside_role_blocks(self) -> None:
+        theme = TuiTheme(
+            assistant_final_header=30,
+            assistant_final_body=31,
+            divider=45,
+            code=70,
+        )
+
+        rows = styled_lines(
+            [
+                "CODEX final",
+                "  | File | Status |",
+                "  | ---- | ------ |",
+                "  | src/tui.py | polished |",
+                "  After table.",
+            ],
+            theme,
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                ("CODEX final", 30),
+                ("  | File | Status |", 70),
+                ("  | ---- | ------ |", 45),
+                ("  | src/tui.py | polished |", 70),
+                ("  After table.", 31),
+            ],
+        )
+
     def test_draw_preview_styles_code_body_when_scrolled_inside_block(self) -> None:
         app = TuiApp(
             [sample_thread()],

@@ -787,6 +787,10 @@ def markdown_structure_attr(line: str, current_role_header: int, theme: TuiTheme
         return current_role_header
     if is_markdown_quote(line):
         return theme.status_muted
+    if is_markdown_table_separator(line):
+        return theme.divider
+    if is_markdown_table_row(line):
+        return theme.code
     if is_markdown_rule(line):
         return theme.divider
     return 0
@@ -805,6 +809,22 @@ def is_markdown_rule(line: str) -> bool:
     if len(line) < 3:
         return False
     return set(line) <= {"-"} or set(line) <= {"*"} or set(line) <= {"_"}
+
+
+def is_markdown_table_row(line: str) -> bool:
+    return line.startswith("|") and line.endswith("|") and line.count("|") >= 3
+
+
+def is_markdown_table_separator(line: str) -> bool:
+    if not is_markdown_table_row(line):
+        return False
+    cells = [cell.strip() for cell in line.strip("|").split("|")]
+    return bool(cells) and all(is_markdown_table_separator_cell(cell) for cell in cells)
+
+
+def is_markdown_table_separator_cell(cell: str) -> bool:
+    marker = cell.strip().strip(":")
+    return len(marker) >= 3 and set(marker) == {"-"}
 
 
 def is_activity_header(line: str) -> bool:

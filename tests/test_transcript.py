@@ -243,6 +243,58 @@ class TranscriptTests(unittest.TestCase):
             if row:
                 self.assertLessEqual(len(row), 35)
 
+    def test_render_thread_preserves_compact_markdown_tables(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-table", "cwd": "/tmp/project", "source": "cli"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "agent_message",
+                        "phase": "final_answer",
+                        "message": "\n".join(
+                            [
+                                "Changed files:",
+                                "",
+                                "| File | Status |",
+                                "| --- | --- |",
+                                "| src/codex_tui/tui.py | polished |",
+                                "| tests/test_tui.py | covered |",
+                            ]
+                        ),
+                    },
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            thread = ThreadRow(
+                id="019f-test-table",
+                title="Markdown table",
+                cwd="/tmp/project",
+                source="cli",
+                archived=False,
+                rollout_path=str(path),
+                created_at_ms=1783677600000,
+                updated_at_ms=1783677605000,
+                recency_at_ms=1783677605000,
+                preview="",
+                first_user_message="",
+            )
+
+            rendered = render_thread(thread, mode="final", width=72)
+
+        self.assertIn("  Changed files:", rendered)
+        self.assertIn("  | File                 | Status   |", rendered)
+        self.assertIn("  | -------------------- | -------- |", rendered)
+        self.assertIn("  | src/codex_tui/tui.py | polished |", rendered)
+        self.assertIn("  | tests/test_tui.py    | covered  |", rendered)
+        self.assertNotIn("| File | Status | | --- | --- |", rendered)
+
     def test_truncate_never_exceeds_requested_width(self) -> None:
         self.assertEqual(truncate("abcdef", 6), "abcdef")
         self.assertEqual(truncate("abcdef", 5), "ab...")
