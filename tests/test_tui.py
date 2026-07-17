@@ -819,6 +819,29 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(screen.attr_at(3, 0), 4)
         self.assertEqual(screen.attr_at(4, 0), 4)
 
+    def test_draw_empty_preview_uses_padded_muted_guidance_rows(self) -> None:
+        app = TuiApp(
+            [],
+            lambda _thread, _prompt, _stdout: 0,
+            theme=TuiTheme(status_muted=4),
+        )
+        screen = RecordingWindow()
+        app.stdscr = screen
+
+        app.draw_preview(x=0, y=2, width=70, height=5)
+
+        self.assertEqual(screen.text_at(2, 0), "No Codex sessions found for the current filters.".ljust(69))
+        self.assertEqual(screen.text_at(3, 0), "".ljust(69))
+        self.assertEqual(
+            screen.text_at(4, 0),
+            "Press n to start a new Codex prompt through CodexTUI.".ljust(69),
+        )
+        self.assertEqual(screen.text_at(6, 0), "Use r to refresh after Codex creates a session.".ljust(69))
+        self.assertEqual(screen.attr_at(2, 0), 4)
+        self.assertEqual(screen.attr_at(3, 0), 4)
+        self.assertEqual(screen.attr_at(4, 0), 4)
+        self.assertEqual(screen.attr_at(6, 0), 4)
+
     def test_stream_view_auto_follows_until_user_scrolls(self) -> None:
         app = TuiApp([sample_thread()], lambda _thread, _prompt, _stdout: 0)
         app.stream_lines = ["one", "two", "three", "four"]

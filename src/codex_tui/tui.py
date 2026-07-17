@@ -262,8 +262,11 @@ class TuiApp:
             row += SESSION_ROW_HEIGHT
 
     def draw_preview(self, x: int, y: int, width: int, height: int) -> None:
-        lines = self.current_preview_lines(width)
-        visual_rows = styled_wrapped_lines(lines, width, self.theme)
+        if not self.threads:
+            visual_rows = empty_preview_rows(self.empty_preview_lines(), width, self.theme)
+        else:
+            lines = self.current_preview_lines(width)
+            visual_rows = styled_wrapped_lines(lines, width, self.theme)
         self.preview_top = clamped_scroll_top(len(visual_rows), height, self.preview_top)
         rows = visual_rows[self.preview_top : self.preview_top + max(0, height)]
         row = y
@@ -644,6 +647,10 @@ def empty_session_lines(width: int) -> list[str]:
         padded_line("Press n for new prompt.", width),
         padded_line("Press r to refresh.", width),
     ]
+
+
+def empty_preview_rows(lines: list[str], width: int, theme: TuiTheme) -> list[tuple[str, int]]:
+    return [(padded_line(line, width), theme.status_muted) for line in wrap_lines(lines, width)]
 
 
 def preview_header(mode: str, scroll_label: str, width: int) -> str:
