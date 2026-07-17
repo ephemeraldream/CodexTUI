@@ -14,6 +14,7 @@ from codex_tui.theme import TuiTheme, build_curses_theme
 from codex_tui.tui import (
     CursesStreamWriter,
     TuiApp,
+    chrome_line,
     footer_help,
     line_attr,
     preview_header,
@@ -554,6 +555,10 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(visible_lines(lines, width=20, height=2, top=1), ["two", "three"])
         self.assertEqual(visible_lines(lines, width=20, height=2, top=99), ["three", "four"])
 
+    def test_chrome_line_pads_to_drawable_terminal_width(self) -> None:
+        self.assertEqual(chrome_line("abc", width=5), "abc ")
+        self.assertEqual(chrome_line("abcdefghij", width=5), "a...")
+
     def test_scroll_position_label_summarizes_visible_range(self) -> None:
         self.assertEqual(scroll_position_label(0, height=5, top=0), "empty")
         self.assertEqual(scroll_position_label(3, height=5, top=0), "all 3")
@@ -572,7 +577,9 @@ class TuiTests(unittest.TestCase):
 
         app.draw()
 
-        self.assertEqual(screen.text_at(1, 28), "Preview [chat] asst final user files | 6-13/20")
+        header = screen.text_at(1, 28)
+        self.assertTrue(header.startswith("Preview [chat] asst final user files | 6-13/20"))
+        self.assertEqual(len(header), 51)
 
     def test_draw_preview_uses_full_body_height_above_footer(self) -> None:
         app = TuiApp(
@@ -586,7 +593,9 @@ class TuiTests(unittest.TestCase):
         app.draw()
 
         self.assertEqual(screen.text_at(9, 28), "line 7")
-        self.assertEqual(screen.text_at(10, 0), footer_help("sessions", has_threads=True, width=80))
+        footer = screen.text_at(10, 0)
+        self.assertTrue(footer.startswith(footer_help("sessions", has_threads=True, width=80)))
+        self.assertEqual(len(footer), 79)
 
     def test_draw_app_header_includes_selected_session_context(self) -> None:
         app = TuiApp(
@@ -599,7 +608,9 @@ class TuiTests(unittest.TestCase):
 
         app.draw()
 
-        self.assertEqual(screen.text_at(0, 0), "CodexTUI | 2/2 019f-tes Build a TUI")
+        header = screen.text_at(0, 0)
+        self.assertTrue(header.startswith("CodexTUI | 2/2 019f-tes Build a TUI"))
+        self.assertEqual(len(header), 79)
 
     def test_preview_header_shows_active_mode_tab_and_responsive_fallback(self) -> None:
         self.assertEqual(
@@ -711,10 +722,13 @@ class TuiTests(unittest.TestCase):
 
         app.draw()
 
-        self.assertEqual(
-            screen.text_at(10, 0),
-            "preview: scroll | modes v/a/f/u/o | enter resume | n new | r refresh | tab | q",
+        footer = screen.text_at(10, 0)
+        self.assertTrue(
+            footer.startswith(
+                "preview: scroll | modes v/a/f/u/o | enter resume | n new | r refresh | tab | q"
+            )
         )
+        self.assertEqual(len(footer), 79)
 
     def test_draw_header_includes_session_scroll_position(self) -> None:
         threads = [sample_thread(f"019f-test-{idx}") for idx in range(8)]
@@ -728,7 +742,9 @@ class TuiTests(unittest.TestCase):
 
         app.draw()
 
-        self.assertEqual(screen.text_at(1, 0), "Sessions | 3-6/8")
+        header = screen.text_at(1, 0)
+        self.assertTrue(header.startswith("Sessions | 3-6/8"))
+        self.assertEqual(len(header), 25)
 
     def test_visible_session_count_tracks_two_line_rows(self) -> None:
         self.assertEqual(visible_session_count(1), 1)
@@ -832,7 +848,9 @@ class TuiTests(unittest.TestCase):
 
         app.draw_stream()
 
-        self.assertEqual(screen.text_at(0, 0), " CodexTUI Stream | resume | 2-5/6 ")
+        header = screen.text_at(0, 0)
+        self.assertTrue(header.startswith(" CodexTUI Stream | resume | 2-5/6 "))
+        self.assertEqual(len(header), 49)
 
     def test_focus_toggle_moves_arrows_between_sessions_and_preview(self) -> None:
         app = TuiApp(

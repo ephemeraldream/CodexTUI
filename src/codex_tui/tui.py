@@ -179,7 +179,7 @@ class TuiApp:
             return
 
         theme = self.theme
-        add_text(stdscr, 0, 0, self.dashboard_header(width), width, theme.app_header)
+        add_chrome(stdscr, 0, 0, self.dashboard_header(width), width, theme.app_header)
         list_width = dashboard_list_width(width)
         preview_x = list_width + 2
         preview_width = dashboard_preview_width(width)
@@ -191,16 +191,30 @@ class TuiApp:
 
         sessions_attr = theme.pane_active if self.focus == "sessions" else theme.pane_inactive
         preview_attr = theme.pane_active if self.focus == "preview" else theme.pane_inactive
-        add_text(stdscr, 1, 0, f"Sessions | {sessions_scroll}", list_width, sessions_attr)
-        add_text(stdscr, 1, preview_x, preview_header(self.mode, preview_scroll, preview_width), preview_width, preview_attr)
+        add_chrome(stdscr, 1, 0, f"Sessions | {sessions_scroll}", list_width, sessions_attr)
+        add_chrome(
+            stdscr,
+            1,
+            preview_x,
+            preview_header(self.mode, preview_scroll, preview_width),
+            preview_width,
+            preview_attr,
+        )
         for y in range(1, height - 2):
             add_text(stdscr, y, list_width, "|", 2, theme.divider)
 
         self.draw_sessions(list_width, body_height)
         self.draw_preview(preview_x, 2, preview_width, preview_height)
 
-        add_text(stdscr, height - 2, 0, footer_help(self.focus, has_threads=bool(self.threads), width=width), width, theme.footer)
-        add_text(stdscr, height - 1, 0, self.status, width, status_line_attr(self.status, theme))
+        add_chrome(
+            stdscr,
+            height - 2,
+            0,
+            footer_help(self.focus, has_threads=bool(self.threads), width=width),
+            width,
+            theme.footer,
+        )
+        add_chrome(stdscr, height - 1, 0, self.status, width, status_line_attr(self.status, theme))
         stdscr.refresh()
 
     def dashboard_header(self, width: int) -> str:
@@ -392,10 +406,10 @@ class TuiApp:
         body_height = height - 3
         theme = self.theme
         stream_scroll = self.stream_scroll_label(current_line, width, body_height)
-        add_text(stdscr, 0, 0, stream_header(self.stream_context_label, stream_scroll, width), width, theme.app_header)
+        add_chrome(stdscr, 0, 0, stream_header(self.stream_context_label, stream_scroll, width), width, theme.app_header)
         for row, (line, attr) in enumerate(self.visible_stream_rows(current_line, width, body_height), start=1):
             add_text(stdscr, row, 0, line, width, attr)
-        add_text(
+        add_chrome(
             stdscr,
             height - 2,
             0,
@@ -403,7 +417,7 @@ class TuiApp:
             width,
             theme.footer,
         )
-        add_text(stdscr, height - 1, 0, self.status, width, status_line_attr(self.status, theme))
+        add_chrome(stdscr, height - 1, 0, self.status, width, status_line_attr(self.status, theme))
         stdscr.refresh()
 
     def visible_stream_lines(self, current_line: str | None, width: int, height: int) -> list[str]:
@@ -604,6 +618,19 @@ def add_text(window: object, y: int, x: int, text: str, width: int, attr: int = 
         window.addnstr(y, x, clean, max(0, width - 1), attr)
     except Exception:
         return
+
+
+def add_chrome(window: object, y: int, x: int, text: str, width: int, attr: int = 0) -> None:
+    add_text(window, y, x, chrome_line(text, width), width, attr)
+
+
+def chrome_line(text: str, width: int) -> str:
+    drawable_width = max(0, width - 1)
+    if drawable_width <= 0:
+        return ""
+    if len(text) <= drawable_width:
+        return text.ljust(drawable_width)
+    return fit_header(text, width).ljust(drawable_width)
 
 
 def preview_header(mode: str, scroll_label: str, width: int) -> str:
