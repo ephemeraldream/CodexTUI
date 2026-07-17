@@ -438,10 +438,27 @@ class TuiTests(unittest.TestCase):
 
         app.draw_preview(x=0, y=2, width=80, height=2)
 
-        self.assertEqual(screen.text_at(2, 0), "print('hi')")
+        self.assertEqual(screen.text_at(2, 0), "print('hi')".ljust(79))
         self.assertEqual(screen.attr_at(2, 0), 70)
-        self.assertEqual(screen.text_at(3, 0), "```")
+        self.assertEqual(screen.text_at(3, 0), "```".ljust(79))
         self.assertEqual(screen.attr_at(3, 0), 70)
+
+    def test_draw_preview_pads_styled_content_rows(self) -> None:
+        app = TuiApp(
+            [sample_thread()],
+            lambda _thread, _prompt, _stdout: 0,
+            theme=TuiTheme(user_header=10, user_body=11),
+        )
+        app.preview_lines = lambda _thread, _width=None: ["YOU", "  Review row fill."]  # type: ignore[method-assign]
+        screen = RecordingWindow()
+        app.stdscr = screen
+
+        app.draw_preview(x=0, y=2, width=24, height=2)
+
+        self.assertEqual(screen.text_at(2, 0), "YOU".ljust(23))
+        self.assertEqual(screen.text_at(3, 0), "  Review row fill.".ljust(23))
+        self.assertEqual(screen.attr_at(2, 0), 10)
+        self.assertEqual(screen.attr_at(3, 0), 11)
 
     def test_visible_stream_rows_styles_code_body_when_scrolled_inside_block(self) -> None:
         app = TuiApp(
@@ -592,7 +609,7 @@ class TuiTests(unittest.TestCase):
 
         app.draw()
 
-        self.assertEqual(screen.text_at(9, 28), "line 7")
+        self.assertEqual(screen.text_at(9, 28), "line 7".ljust(51))
         footer = screen.text_at(10, 0)
         self.assertTrue(footer.startswith(footer_help("sessions", has_threads=True, width=80)))
         self.assertEqual(len(footer), 79)
@@ -915,6 +932,23 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(header.startswith(" CodexTUI Stream | resume | waiting "))
         self.assertEqual(screen.text_at(1, 0), "Waiting for Codex output...".ljust(49))
         self.assertEqual(screen.attr_at(1, 0), 4)
+
+    def test_draw_stream_pads_styled_content_rows(self) -> None:
+        app = TuiApp(
+            [sample_thread()],
+            lambda _thread, _prompt, _stdout: 0,
+            theme=TuiTheme(assistant_header=20, assistant_body=21),
+        )
+        app.stream_lines = ["CODEX", "  Streaming row fill."]
+        screen = RecordingWindow(height=7, width=40)
+        app.stdscr = screen
+
+        app.draw_stream()
+
+        self.assertEqual(screen.text_at(1, 0), "CODEX".ljust(39))
+        self.assertEqual(screen.text_at(2, 0), "  Streaming row fill.".ljust(39))
+        self.assertEqual(screen.attr_at(1, 0), 20)
+        self.assertEqual(screen.attr_at(2, 0), 21)
 
     def test_focus_toggle_moves_arrows_between_sessions_and_preview(self) -> None:
         app = TuiApp(

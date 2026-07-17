@@ -275,7 +275,7 @@ class TuiApp:
         for line, attr in rows:
             if row >= y + height:
                 break
-            add_text(self.stdscr, row, x, line, width, attr)
+            add_display_text(self.stdscr, row, x, line, width, attr)
             row += 1
 
     def preview_scroll_label(self, width: int, height: int) -> str:
@@ -414,7 +414,7 @@ class TuiApp:
         stream_scroll = self.stream_scroll_label(current_line, width, body_height)
         add_chrome(stdscr, 0, 0, stream_header(self.stream_context_label, stream_scroll, width), width, theme.app_header)
         for row, (line, attr) in enumerate(self.visible_stream_rows(current_line, width, body_height), start=1):
-            add_text(stdscr, row, 0, line, width, attr)
+            add_display_text(stdscr, row, 0, line, width, attr)
         add_chrome(
             stdscr,
             height - 2,
@@ -632,6 +632,10 @@ def add_text(window: object, y: int, x: int, text: str, width: int, attr: int = 
 
 def add_chrome(window: object, y: int, x: int, text: str, width: int, attr: int = 0) -> None:
     add_text(window, y, x, chrome_line(text, width), width, attr)
+
+
+def add_display_text(window: object, y: int, x: int, text: str, width: int, attr: int = 0) -> None:
+    add_text(window, y, x, padded_line(text, width), width, attr)
 
 
 def chrome_line(text: str, width: int) -> str:
