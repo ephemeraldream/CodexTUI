@@ -628,19 +628,20 @@ class TuiTests(unittest.TestCase):
     def test_stream_footer_tracks_live_and_review_state(self) -> None:
         self.assertEqual(
             stream_footer_help("codex exec --json", reviewing=False),
-            "codex exec --json | live: capturing output",
+            "new prompt | live: capturing output",
         )
         self.assertEqual(
             stream_footer_help("codex exec resume --json", reviewing=True),
-            "codex exec resume --json | review: arrows/PgUp/PgDn scroll | enter/q return",
+            "resume | review: arrows/PgUp/PgDn scroll | enter/q return",
         )
+        self.assertNotIn("--json", stream_footer_help("codex exec --json", reviewing=False))
 
     def test_stream_footer_uses_width_aware_variants(self) -> None:
         review_footer = stream_footer_help("codex exec resume --json", reviewing=True, width=50)
         live_footer = stream_footer_help("codex exec --json", reviewing=False, width=30)
 
         self.assertEqual(review_footer, "resume | review: arrows/PgUp/PgDn | enter/q")
-        self.assertEqual(live_footer, "exec | live capture")
+        self.assertEqual(live_footer, "new prompt | live capture")
         self.assertLessEqual(len(review_footer), 49)
         self.assertLessEqual(len(live_footer), 29)
 
@@ -664,6 +665,12 @@ class TuiTests(unittest.TestCase):
             footer_help("sessions", has_threads=False),
             "n new prompt | r refresh | q quit | ctui doctor for setup",
         )
+
+    def test_default_status_hides_json_stream_implementation(self) -> None:
+        app = TuiApp([sample_thread()], lambda _thread, _prompt, _stdout: 0)
+
+        self.assertEqual(app.status, "Enter resumes the selected session; n starts a new prompt.")
+        self.assertNotIn("JSON", app.status)
 
     def test_footer_help_uses_width_aware_variants(self) -> None:
         sessions_footer = footer_help("sessions", has_threads=True, width=80)

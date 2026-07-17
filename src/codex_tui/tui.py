@@ -22,6 +22,7 @@ PREVIEW_MODE_TABS = (
     ("user", "user"),
     ("files", "files"),
 )
+DEFAULT_TUI_STATUS = "Enter resumes the selected session; n starts a new prompt."
 
 
 class StreamOutput(Protocol):
@@ -46,7 +47,7 @@ class TuiApp:
     top: int = 0
     focus: str = "sessions"
     preview_top: int = 0
-    status: str = "Enter continues the selected session; n starts a new CodexTUI JSON stream."
+    status: str = DEFAULT_TUI_STATUS
     preview_cache: dict[tuple[str, str, int], list[str]] = field(default_factory=dict)
     stream_lines: list[str] = field(default_factory=list)
     stream_top: int | None = None
@@ -536,7 +537,7 @@ def run_tui(
         return stream_new_prompt(prompt, raw_json=raw_json, stdout=stdout)
 
     status = (
-        "Enter continues the selected session; n starts a new CodexTUI JSON stream."
+        DEFAULT_TUI_STATUS
         if threads
         else "No sessions found. Press n to start a new Codex prompt, or q to quit."
     )
@@ -682,34 +683,33 @@ def stream_header(context_label: str, scroll_label: str, width: int) -> str:
 
 
 def stream_footer_help(command_label: str, *, reviewing: bool, width: int | None = None) -> str:
-    short_label = stream_command_short_label(command_label)
+    label = stream_command_display_label(command_label)
     if reviewing:
         return fit_footer(
             [
-                f"{command_label} | review: arrows/PgUp/PgDn scroll | enter/q return",
-                f"{command_label} | review: scroll | enter/q return",
-                f"{short_label} | review: arrows/PgUp/PgDn | enter/q",
-                f"{short_label} | review scroll | enter/q",
-                f"{short_label} | enter/q",
+                f"{label} | review: arrows/PgUp/PgDn scroll | enter/q return",
+                f"{label} | review: arrows/PgUp/PgDn | enter/q",
+                f"{label} | review: scroll | enter/q return",
+                f"{label} | review scroll | enter/q",
+                f"{label} | enter/q",
             ],
             width,
         )
     return fit_footer(
         [
-            f"{command_label} | live: capturing output",
-            f"{command_label} | live capture",
-            f"{short_label} | live capture",
-            f"{short_label} | live",
+            f"{label} | live: capturing output",
+            f"{label} | live capture",
+            f"{label} | live",
         ],
         width,
     )
 
 
-def stream_command_short_label(command_label: str) -> str:
+def stream_command_display_label(command_label: str) -> str:
     if "resume" in command_label.split():
         return "resume"
     if command_label.startswith("codex exec"):
-        return "exec"
+        return "new prompt"
     return command_label
 
 
