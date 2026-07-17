@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .models import ChatMessage, ThreadRow
+from .terminal_markdown import render_code_block_lines, render_markdown_lines
 
 
 AUTONOMOUS_STATUS_KEYS = {"success", "summary", "key_changes_made", "key_learnings"}
@@ -179,37 +180,56 @@ def render_thread(
     mode: str = "chat",
     phases: set[str] | None = None,
     color: bool = False,
+    width: int | None = None,
+    include_metadata: bool = True,
+    header_style: str = "full",
 ) -> str:
     path = Path(thread.rollout_path)
     messages = filter_messages(read_messages(path), mode, phases)
-    lines = [
-        f"Codex session: {short_id(thread.id)}",
-        f"Title: {truncate(thread.title or thread.first_user_message, 220) or '(untitled)'}",
-        f"Updated: {format_ms(thread.recency_at_ms)}",
-        f"Source: {thread.source or '?'}",
-        f"CWD: {thread.cwd or '?'}",
-        f"File: {thread.rollout_path}",
-        "",
-    ]
+    lines: list[str] = []
+    if include_metadata:
+        lines.extend(
+            [
+                f"Codex session: {short_id(thread.id)}",
+                f"Title: {truncate(thread.title or thread.first_user_message, 220) or '(untitled)'}",
+                f"Updated: {format_ms(thread.recency_at_ms)}",
+                f"Source: {thread.source or '?'}",
+                f"CWD: {thread.cwd or '?'}",
+                f"File: {thread.rollout_path}",
+                "",
+            ]
+        )
     if not messages:
         lines.append("(No chat messages found in this session.)")
         return "\n".join(lines)
     for idx, message in enumerate(messages, start=1):
-        role = role_label(message)
-        header = f"[{idx}] {format_timestamp(message.timestamp)}  {role}"
+        header = message_header(idx, message, header_style)
         if color:
             header = colorize_header(header, message.role, message.phase)
         lines.append(header)
-        lines.append(textwrap.indent(render_message_text(message), "  "))
+        lines.append(textwrap.indent(render_message_text(message, width=message_width(width)), "  "))
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_message_text(message: ChatMessage) -> str:
+def render_message_text(message: ChatMessage, *, width: int | None = None) -> str:
     text = message.text.rstrip()
     if message.role == "assistant":
-        return pretty_json_text(text)
+        pretty = pretty_json_text(text)
+        if width is not None:
+            if pretty != text:
+                return "\n".join(render_code_block_lines(pretty, width=width, language="json"))
+            return "\n".join(render_markdown_lines(pretty, width=width))
+        return pretty
+    if width is not None:
+        return "\n".join(render_markdown_lines(text, width=width))
     return text
+
+
+def message_width(width: int | None) -> int | None:
+    if width is None:
+        return None
+    return max(1, width - 4)
 
 
 def pretty_json_text(text: str) -> str:
@@ -233,6 +253,14 @@ def role_label(message: ChatMessage) -> str:
     return "CODEX"
 
 
+def message_header(idx: int, message: ChatMessage, header_style: str) -> str:
+    role = role_label(message)
+    if header_style == "compact":
+        timestamp = compact_timestamp(message.timestamp)
+        return f"{role} {timestamp}" if timestamp else role
+    return f"[{idx}] {format_timestamp(message.timestamp)}  {role}"
+
+
 def colorize_header(text: str, role: str, phase: str) -> str:
     if role == "user":
         return f"\033[1;36m{text}\033[0m"
@@ -249,6 +277,16 @@ def format_timestamp(value: str) -> str:
         return parsed.astimezone().strftime("%Y-%m-%d %H:%M:%S")
     except ValueError:
         return value
+
+
+def compact_timestamp(value: str) -> str:
+    if not value:
+        return ""
+    try:
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.astimezone().strftime("%H:%M")
+    except ValueError:
+        return ""
 
 
 def format_ms(value: int) -> str:
@@ -268,6 +306,10 @@ def one_line(value: str) -> str:
 
 def truncate(value: str, width: int) -> str:
     clean = one_line(value)
+    if width <= 0:
+        return ""
     if len(clean) <= width:
         return clean
-    return clean[: max(0, width - 1)] + "..."
+    if width <= 3:
+        return "." * width
+    return clean[: width - 3] + "..."

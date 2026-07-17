@@ -13,10 +13,10 @@ class CodexStreamTests(unittest.TestCase):
     def test_event_agent_message_renders_as_stream_text(self) -> None:
         line = json_line(
             "event_msg",
-            {"type": "agent_message", "phase": "commentary", "message": "I am checking the repo."},
+            {"type": "agent_message", "phase": "commentary", "message": "I am checking the repo.\nNext step."},
         )
 
-        self.assertEqual(text_from_json_line(line), "I am checking the repo.")
+        self.assertEqual(text_from_json_line(line), "CODEX\n  I am checking the repo.\n  Next step.")
 
     def test_response_item_assistant_message_is_fallback_stream_text(self) -> None:
         line = json_line(
@@ -28,7 +28,7 @@ class CodexStreamTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(text_from_json_line(line), "Fallback answer.")
+        self.assertEqual(text_from_json_line(line), "CODEX\n  Fallback answer.")
 
     def test_renderer_suppresses_duplicate_high_level_and_response_messages(self) -> None:
         event_line = json_line(
@@ -47,7 +47,7 @@ class CodexStreamTests(unittest.TestCase):
         task_complete_line = json_line("event_msg", {"type": "task_complete", "last_agent_message": "Done."})
         renderer = CodexStreamRenderer()
 
-        self.assertEqual(renderer.render_line(event_line), "Done.")
+        self.assertEqual(renderer.render_line(event_line), "CODEX final\n  Done.")
         self.assertIsNone(renderer.render_line(response_line))
         self.assertIsNone(renderer.render_line(task_complete_line))
 
@@ -79,7 +79,7 @@ class CodexStreamTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(text_from_json_line(line), "Ок, ничего не делаю.")
+        self.assertEqual(text_from_json_line(line), "CODEX\n  Ок, ничего не делаю.")
 
     def test_renderer_streams_top_level_turn_usage(self) -> None:
         line = json.dumps(
@@ -121,6 +121,38 @@ class CodexStreamTests(unittest.TestCase):
 
         self.assertEqual(renderer.render_line(call_line), "[tool] exec_command: pytest (cwd: /tmp/project)")
         self.assertEqual(renderer.render_line(output_line), "[tool output] exec_command\n2 failed, 1 passed")
+
+    def test_renderer_folds_long_tool_output_activity(self) -> None:
+        call_line = json_line(
+            "response_item",
+            {
+                "type": "function_call",
+                "name": "exec_command",
+                "arguments": json.dumps({"cmd": "pytest"}),
+                "call_id": "call_long",
+            },
+        )
+        output = "\n".join(f"line {index}" for index in range(30))
+        output_line = json_line(
+            "response_item",
+            {
+                "type": "function_call_output",
+                "call_id": "call_long",
+                "output": output,
+            },
+        )
+        renderer = CodexStreamRenderer()
+
+        self.assertEqual(renderer.render_line(call_line), "[tool] exec_command: pytest")
+        rendered = renderer.render_line(output_line)
+
+        self.assertIsNotNone(rendered)
+        assert rendered is not None
+        self.assertIn("[tool output] exec_command: folded 30 lines", rendered)
+        self.assertIn("showing preview\nline 0\nline 1", rendered)
+        self.assertIn("line 7", rendered)
+        self.assertNotIn("line 8", rendered)
+        self.assertNotIn("line 29", rendered)
 
     def test_renderer_streams_patch_and_task_activity(self) -> None:
         task_line = json_line("event_msg", {"type": "task_started", "turn_id": "turn_1"})
@@ -249,7 +281,7 @@ class CodexStreamTests(unittest.TestCase):
     def test_renderer_streams_user_message_events(self) -> None:
         line = json_line("event_msg", {"type": "user_message", "message": "Fix the failing test."})
 
-        self.assertEqual(text_from_json_line(line), "[user] Fix the failing test.")
+        self.assertEqual(text_from_json_line(line), "YOU\n  Fix the failing test.")
 
     def test_renderer_cleans_autonomous_user_message_events(self) -> None:
         line = json_line(
@@ -267,7 +299,7 @@ class CodexStreamTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(text_from_json_line(line), "[user] Build a CodexTUI-owned TUI.")
+        self.assertEqual(text_from_json_line(line), "YOU\n  Build a CodexTUI-owned TUI.")
 
     def test_renderer_suppresses_bootstrap_user_message_events(self) -> None:
         line = json_line(

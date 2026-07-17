@@ -15,6 +15,12 @@ from .transcript import (
 )
 
 
+TOOL_OUTPUT_FOLD_LINE_LIMIT = 20
+TOOL_OUTPUT_FOLD_BYTE_LIMIT = 4_000
+TOOL_OUTPUT_PREVIEW_LINES = 8
+TOOL_OUTPUT_PREVIEW_CHARS = 1_200
+
+
 @dataclass
 class CodexStreamRenderer:
     last_text: str = ""
@@ -102,15 +108,15 @@ def text_from_stream_record(
         text = text_from_payload(payload)
         phase = str(payload.get("phase") or "")
         if text and not looks_like_autonomous_status_update(text, phase):
-            return text
+            return render_assistant_message(text, phase)
     if record_type == "event_msg" and payload_type == "task_complete":
         text = str(payload.get("last_agent_message") or "")
-        return text or None
+        return render_assistant_message(text, "final_answer") if text else None
     if record_type == "response_item" and payload_type == "message" and payload.get("role") == "assistant":
         text = text_from_payload(payload)
         phase = str(payload.get("phase") or "")
         if text and not looks_like_autonomous_status_update(text, phase):
-            return text
+            return render_assistant_message(text, phase)
     if record_type == "response_item":
         return text_from_response_item(payload, call_labels=call_labels)
     return None
@@ -126,8 +132,9 @@ def text_from_top_level_item(
     item_type = str(item.get("type") or "")
     if item_type == "agent_message":
         text = str(item.get("text") or "")
-        if text and not looks_like_autonomous_status_update(text, ""):
-            return text
+        phase = str(item.get("phase") or "")
+        if text and not looks_like_autonomous_status_update(text, phase):
+            return render_assistant_message(text, phase)
         return None
     if item_type == "user_message":
         return render_user_message(item)
@@ -183,7 +190,16 @@ def render_user_message(payload: dict[str, object]) -> str | None:
     text = text_from_payload(payload)
     if not text or looks_like_bootstrap_context(text):
         return None
-    return f"[user] {compact_value(clean_user_text(text), limit=800)}"
+    return f"YOU\n  {compact_value(clean_user_text(text), limit=800)}"
+
+
+def render_assistant_message(text: str, phase: str) -> str:
+    role = "CODEX final" if phase == "final_answer" else "CODEX"
+    return f"{role}\n{indent_stream_text(text)}"
+
+
+def indent_stream_text(text: str) -> str:
+    return "\n".join(f"  {line}" if line else "  " for line in text.rstrip().splitlines())
 
 
 def text_from_response_item(
@@ -259,6 +275,9 @@ def render_tool_output(
     prefix = f"[tool output] {label}" if label else "[tool output]"
     if not text:
         return f"{prefix}: (no output)"
+    folded = folded_tool_output(text)
+    if folded:
+        return f"{prefix}: {folded}"
     return f"{prefix}\n{text}"
 
 
@@ -469,6 +488,29 @@ def stringify_output(value: object) -> str:
     if isinstance(value, str):
         return value
     return json.dumps(value, ensure_ascii=False, indent=2)
+
+
+def folded_tool_output(text: str) -> str:
+    lines = text.splitlines()
+    byte_count = len(text.encode("utf-8"))
+    if len(lines) <= TOOL_OUTPUT_FOLD_LINE_LIMIT and byte_count <= TOOL_OUTPUT_FOLD_BYTE_LIMIT:
+        return ""
+    preview = tool_output_preview(lines)
+    line_label = "line" if len(lines) == 1 else "lines"
+    return f"folded {len(lines)} {line_label}, {format_bytes(byte_count)}; showing preview\n{preview}"
+
+
+def tool_output_preview(lines: list[str]) -> str:
+    preview_lines = lines[:TOOL_OUTPUT_PREVIEW_LINES]
+    preview = "\n".join(preview_lines)
+    if len(preview) <= TOOL_OUTPUT_PREVIEW_CHARS:
+        return preview
+    return preview[:TOOL_OUTPUT_PREVIEW_CHARS].rstrip() + "\n... [preview truncated]"
+
+
+def format_bytes(count: int) -> str:
+    label = "byte" if count == 1 else "bytes"
+    return f"{format_number(float(count))} {label}"
 
 
 def duration_text(value: object) -> str:
