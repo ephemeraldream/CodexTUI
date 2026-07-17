@@ -437,15 +437,19 @@ class TuiApp:
     def read_prompt(self, label: str) -> str:
         curses = self.curses
         height, width = self.stdscr.getmaxyx()
-        prompt = f"{label}: "
+        prompt = prompt_entry_prefix(label, width)
         y = height - 1
         add_text(self.stdscr, y, 0, " " * max(0, width - 1), width)
-        add_text(self.stdscr, y, 0, prompt, width)
+        add_text(self.stdscr, y, 0, prompt, width, self.theme.footer)
         self.stdscr.refresh()
         curses.echo()
         safe_curs_set(curses, 1)
         try:
-            raw = self.stdscr.getstr(y, min(len(prompt), width - 1), max(1, width - len(prompt) - 1))
+            raw = self.stdscr.getstr(
+                y,
+                min(len(prompt), max(0, width - 1)),
+                prompt_input_limit(prompt, width),
+            )
         finally:
             curses.noecho()
             safe_curs_set(curses, 0)
@@ -644,6 +648,35 @@ def stream_session_label(thread: ThreadRow) -> str:
     title = thread.title or thread.first_user_message or thread.preview
     suffix = f" {title}" if title else ""
     return f"resume {short_id(thread.id)}{suffix}"
+
+
+def prompt_entry_prefix(label: str, width: int) -> str:
+    usable_width = max(0, width - 1)
+    if usable_width <= 2:
+        return ""
+    words = label.split()
+    short_label = words[0] if words else "Prompt"
+    variants = unique_labels([f"{label}: ", f"{short_label}: ", "> "])
+    required_input = min(20, max(1, usable_width // 2))
+    for variant in variants:
+        if len(variant) < usable_width and prompt_input_limit(variant, width) >= required_input:
+            return variant
+    for variant in reversed(variants):
+        if len(variant) < usable_width:
+            return variant
+    return ""
+
+
+def prompt_input_limit(prefix: str, width: int) -> int:
+    return max(1, max(0, width - 1) - len(prefix))
+
+
+def unique_labels(labels: list[str]) -> list[str]:
+    result: list[str] = []
+    for label in labels:
+        if label not in result:
+            result.append(label)
+    return result
 
 
 def preview_mode_tabs(active_mode: str) -> str:

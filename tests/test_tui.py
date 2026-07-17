@@ -17,6 +17,8 @@ from codex_tui.tui import (
     footer_help,
     line_attr,
     preview_header,
+    prompt_entry_prefix,
+    prompt_input_limit,
     scroll_position_label,
     session_row_lines,
     status_line_attr,
@@ -614,6 +616,31 @@ class TuiTests(unittest.TestCase):
         self.assertLessEqual(len(preview_footer), 79)
         self.assertLessEqual(len(narrow_preview_footer), 49)
 
+    def test_prompt_entry_prefix_preserves_input_space_on_narrow_widths(self) -> None:
+        wide_prefix = prompt_entry_prefix("Ask CodexTUI", width=80)
+        narrow_prefix = prompt_entry_prefix("New Codex prompt", width=20)
+
+        self.assertEqual(wide_prefix, "Ask CodexTUI: ")
+        self.assertEqual(narrow_prefix, "New: ")
+        self.assertGreaterEqual(prompt_input_limit(narrow_prefix, width=20), 9)
+
+    def test_read_prompt_uses_width_aware_prompt_prefix(self) -> None:
+        app = TuiApp(
+            [sample_thread()],
+            lambda _thread, _prompt, _stdout: 0,
+            theme=TuiTheme(footer=4),
+        )
+        screen = RecordingWindow(height=6, width=20)
+        screen.prompt_response = b"Continue here"
+        app.stdscr = screen
+        app.curses = FakeInputCurses()
+
+        result = app.read_prompt("New Codex prompt")
+
+        self.assertEqual(result, "Continue here")
+        self.assertEqual(screen.writes[-1], (5, 0, "New: ", 4))
+        self.assertEqual(screen.getstr_calls[-1], (5, 5, 14))
+
     def test_draw_footer_uses_terminal_width(self) -> None:
         app = TuiApp(
             [sample_thread()],
@@ -1045,6 +1072,8 @@ class RecordingWindow:
         self.writes: list[tuple[int, int, str, int]] = []
         self.height = height
         self.width = width
+        self.prompt_response = b""
+        self.getstr_calls: list[tuple[int, int, int]] = []
 
     def getmaxyx(self) -> tuple[int, int]:
         return (self.height, self.width)
@@ -1057,6 +1086,10 @@ class RecordingWindow:
 
     def addnstr(self, y: int, x: int, text: str, _limit: int, attr: int = 0) -> None:
         self.writes.append((y, x, text, attr))
+
+    def getstr(self, y: int, x: int, limit: int) -> bytes:
+        self.getstr_calls.append((y, x, limit))
+        return self.prompt_response
 
     def text_at(self, y: int, x: int) -> str:
         for row, col, text, _attr in self.writes:
@@ -1101,6 +1134,21 @@ class FakeColorCurses:
 
     def color_pair(self, pair: int) -> int:
         return pair * 256
+
+
+class FakeInputCurses:
+    def __init__(self) -> None:
+        self.echoed = False
+        self.cursor: list[int] = []
+
+    def echo(self) -> None:
+        self.echoed = True
+
+    def noecho(self) -> None:
+        self.echoed = False
+
+    def curs_set(self, visibility: int) -> None:
+        self.cursor.append(visibility)
 
 
 if __name__ == "__main__":
