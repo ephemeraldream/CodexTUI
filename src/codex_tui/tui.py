@@ -786,7 +786,9 @@ def footer_help(focus: str, *, has_threads: bool, width: int | None = None) -> s
                 "preview: arrows/PgUp/PgDn scroll | v chat | a assistant | f final | u user | o files | tab sessions | q quit",
                 "preview: scroll | modes v/a/f/u/o | enter resume | n new | r refresh | tab | q",
                 "scroll | modes v/a/f/u/o | enter resume | n new | r refresh | tab | q",
-                "scroll | modes v/a/f/u/o | tab | q",
+                "scroll | v/a/f/u/o | enter | n | r | tab | q",
+                "scroll | modes | enter/n/r | tab/q",
+                "scroll | enter/n/r | tab/q",
                 "preview | scroll | tab | q",
             ],
             width,
@@ -795,8 +797,10 @@ def footer_help(focus: str, *, has_threads: bool, width: int | None = None) -> s
         [
             "sessions: arrows select | enter resume | n new | r refresh | tab preview | q quit",
             "sessions: up/down | enter resume | n new | r refresh | tab preview | q quit",
-            "up/down | enter resume | n new | tab | q",
-            "sessions | enter | n | tab | q",
+            "up/down | enter | n new | r refresh | tab | q",
+            "enter | n new | r refresh | tab | q",
+            "enter | n | r | tab | q",
+            "n/r/q",
         ],
         width,
     )

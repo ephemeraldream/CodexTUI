@@ -691,12 +691,18 @@ class TuiTests(unittest.TestCase):
 
     def test_footer_help_uses_width_aware_variants(self) -> None:
         sessions_footer = footer_help("sessions", has_threads=True, width=80)
+        compact_sessions_footer = footer_help("sessions", has_threads=True, width=50)
         preview_footer = footer_help("preview", has_threads=True, width=80)
         narrow_preview_footer = footer_help("preview", has_threads=True, width=50)
+        tight_preview_footer = footer_help("preview", has_threads=True, width=40)
 
         self.assertEqual(
             sessions_footer,
             "sessions: up/down | enter resume | n new | r refresh | tab preview | q quit",
+        )
+        self.assertEqual(
+            compact_sessions_footer,
+            "up/down | enter | n new | r refresh | tab | q",
         )
         self.assertEqual(
             preview_footer,
@@ -704,10 +710,13 @@ class TuiTests(unittest.TestCase):
         )
         self.assertIn("enter resume", preview_footer)
         self.assertIn("r refresh", preview_footer)
-        self.assertEqual(narrow_preview_footer, "scroll | modes v/a/f/u/o | tab | q")
+        self.assertEqual(narrow_preview_footer, "scroll | v/a/f/u/o | enter | n | r | tab | q")
+        self.assertEqual(tight_preview_footer, "scroll | modes | enter/n/r | tab/q")
         self.assertLessEqual(len(sessions_footer), 79)
+        self.assertLessEqual(len(compact_sessions_footer), 49)
         self.assertLessEqual(len(preview_footer), 79)
         self.assertLessEqual(len(narrow_preview_footer), 49)
+        self.assertLessEqual(len(tight_preview_footer), 39)
 
     def test_prompt_entry_prefix_preserves_input_space_on_narrow_widths(self) -> None:
         wide_prefix = prompt_entry_prefix("Ask CodexTUI", width=80)
