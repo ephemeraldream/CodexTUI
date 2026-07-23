@@ -488,11 +488,34 @@ def render_turn_completed(record: dict[str, object]) -> str | None:
 
 def render_turn_failed(record: dict[str, object]) -> str:
     error = record.get("error")
-    if isinstance(error, dict):
-        message = compact_value(error.get("message") or error.get("detail") or error)
-    else:
-        message = compact_value(error)
+    message = turn_failure_message(error)
     return f"[task] Codex turn failed: {message}" if message else "[task] Codex turn failed."
+
+
+def turn_failure_message(error: object) -> str:
+    if not isinstance(error, dict):
+        return compact_scalar(error, limit=240)
+    for key in ("message", "detail", "error", "reason"):
+        message = compact_scalar(error.get(key), limit=240)
+        if message:
+            return message
+    parts: list[str] = []
+    for key in ("code", "type", "status", "name"):
+        value = compact_scalar(error.get(key), limit=80)
+        if value:
+            parts.append(f"{key} {value}")
+    retryable = error.get("retryable")
+    if isinstance(retryable, bool):
+        parts.append("retryable" if retryable else "not retryable")
+    if parts:
+        return ", ".join(parts)
+    for key, value in sorted(error.items()):
+        scalar = compact_scalar(value, limit=80)
+        if scalar:
+            parts.append(f"{key} {scalar}")
+        if len(parts) >= 3:
+            break
+    return ", ".join(parts)
 
 
 def render_compacted_record(payload: dict[str, object]) -> str:

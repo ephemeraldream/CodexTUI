@@ -158,6 +158,27 @@ class CodexStreamTests(unittest.TestCase):
             "[tokens] input 3.3m, cached 2.8m, output 26.5k, reasoning 11k",
         )
 
+    def test_renderer_summarizes_turn_failure_without_raw_json(self) -> None:
+        line = json.dumps(
+            {
+                "type": "turn.failed",
+                "error": {
+                    "code": "auth_expired",
+                    "metadata": {"token": "secret-ish"},
+                    "retryable": False,
+                },
+            }
+        )
+
+        rendered = text_from_json_line(line)
+
+        self.assertEqual(
+            rendered, "[task] Codex turn failed: code auth_expired, not retryable"
+        )
+        self.assertNotIn("{", rendered or "")
+        self.assertNotIn("metadata", rendered or "")
+        self.assertNotIn("secret-ish", rendered or "")
+
     def test_renderer_streams_tool_call_and_output_activity(self) -> None:
         call_line = json_line(
             "response_item",
