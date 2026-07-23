@@ -59,6 +59,33 @@ class TranscriptBlockTests(unittest.TestCase):
         self.assertEqual(change.file_changes[0].path, "src/app.py")
         self.assertIn("-old", change.file_changes[0].diff)
 
+    def test_transcript_blocks_fold_large_tool_output_but_keep_detail(self) -> None:
+        output = "\n".join(f"line {index}" for index in range(30))
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            rollout = root / "rollout.jsonl"
+            write_jsonl(
+                rollout,
+                [
+                    session_meta("019f-tool-output"),
+                    user_message("2026-07-10T12:00:01.000Z", "Run tests"),
+                    tool_call("2026-07-10T12:00:02.000Z", "call_1", "exec_command"),
+                    tool_output("2026-07-10T12:00:03.000Z", "call_1", output),
+                    assistant_message("2026-07-10T12:00:04.000Z", "Done."),
+                ],
+            )
+            thread = thread_for_rollout(rollout)
+
+            blocks = transcript_blocks_for_thread(thread)
+
+        self.assertEqual([block.kind for block in blocks], ["message", "tool_output", "message"])
+        folded = blocks[1]
+        self.assertTrue(folded.expandable)
+        self.assertIn("exec_command: folded 30 lines", folded.text)
+        self.assertIn("line 7", folded.text)
+        self.assertNotIn("line 29", folded.text)
+        self.assertIn("line 29", folded.detail_text)
+
     def test_session_info_reads_model_and_context(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -159,6 +186,32 @@ def apply_patch_call(timestamp: str, patch: str) -> dict[str, object]:
             "call_id": "call_1",
             "name": "apply_patch",
             "input": patch,
+        },
+    }
+
+
+def tool_call(timestamp: str, call_id: str, name: str) -> dict[str, object]:
+    return {
+        "timestamp": timestamp,
+        "type": "response_item",
+        "payload": {
+            "type": "function_call",
+            "status": "completed",
+            "call_id": call_id,
+            "name": name,
+            "arguments": "{}",
+        },
+    }
+
+
+def tool_output(timestamp: str, call_id: str, output: str) -> dict[str, object]:
+    return {
+        "timestamp": timestamp,
+        "type": "response_item",
+        "payload": {
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": output,
         },
     }
 

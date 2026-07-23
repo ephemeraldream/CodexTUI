@@ -689,6 +689,11 @@ if TEXTUAL_IMPORT_ERROR is None:
                 event.stop()
                 self.scroll_selected_transcript_block(event.key)
                 return
+            if focused_id == "transcript" and event.key == "t":
+                event.prevent_default()
+                event.stop()
+                self.toggle_selected_transcript_block()
+                return
             if focused_id == "transcript" and event.key == "g":
                 event.prevent_default()
                 event.stop()
@@ -1016,7 +1021,7 @@ if TEXTUAL_IMPORT_ERROR is None:
         def update_composer_help(self) -> None:
             history_hint = "b hide list" if self.history_visible else "b show list"
             image_hint = f"{self.image_attachment_chips()} | " if self.pending_image_paths else "Cmd/Ctrl+V img | "
-            text = f"n new | j/k blocks | Enter open | i/c chat | {image_hint}{history_hint} | Ctrl+j/k scroll | gg/G | R resume"
+            text = f"n new | j/k blocks | Enter/t expand | i/c chat | {image_hint}{history_hint} | Ctrl+j/k scroll | gg/G | R resume"
             self.query_one("#composer-help", Static).update(text)
 
         def handle_composer_paste_text(self, text: str) -> bool:
@@ -1114,14 +1119,14 @@ if TEXTUAL_IMPORT_ERROR is None:
                 return
             block = self.transcript_blocks[index]
             if not block.expandable:
-                self.set_status("Selected block has no diff to expand.")
+                self.set_status("Selected block has nothing to expand.")
                 return
             if block.id in self.expanded_block_ids:
                 self.expanded_block_ids.remove(block.id)
-                self.set_status(f"Collapsed {block.text}.")
+                self.set_status(f"Collapsed {block.title}.")
             else:
                 self.expanded_block_ids.add(block.id)
-                self.set_status(f"Expanded {block.text}.")
+                self.set_status(f"Expanded {block.title}.")
             self.render_transcript_blocks(preserve_index=True)
             self.focus_transcript()
 
@@ -1184,6 +1189,8 @@ if TEXTUAL_IMPORT_ERROR is None:
 
         if block.kind == "file_change":
             body = transcript_file_change_body(block, expanded=expanded)
+        elif block.detail_text:
+            body = transcript_detail_body(block, expanded=expanded)
         else:
             body = transcript_text_body(block)
         return Panel(Group(body), title=title, title_align="left", border_style=style_for_transcript_block(block), padding=(0, 1))
@@ -1205,7 +1212,7 @@ if TEXTUAL_IMPORT_ERROR is None:
         if not expanded:
             summary = Text()
             summary.append(block.text or "Changed files", style="#f4f0e4")
-            summary.append("\nEnter expands diff", style="dim")
+            summary.append("\nEnter/t expands", style="dim")
             return summary
         renderables: list[object] = []
         for change in block.file_changes:
@@ -1213,6 +1220,15 @@ if TEXTUAL_IMPORT_ERROR is None:
             diff = Syntax(change.diff.rstrip() or " ", "diff", word_wrap=True, theme="monokai")
             renderables.append(Group(header, diff))
         return Group(*renderables) if renderables else Text(block.text or "No diff available.", style="dim")
+
+
+    def transcript_detail_body(block: TranscriptBlock, *, expanded: bool) -> object:
+        if expanded:
+            return Text(block.detail_text.rstrip() or " ", style="yellow")
+        summary = Text()
+        summary.append(block.text or "Folded output", style="yellow")
+        summary.append("\nEnter/t expands", style="dim")
+        return summary
 
 
     def transcript_block_from_stream_block(block: str, block_id: str) -> TranscriptBlock:
@@ -1266,7 +1282,7 @@ if TEXTUAL_IMPORT_ERROR is None:
     def style_for_transcript_block(block: TranscriptBlock) -> str:
         if block.kind == "file_change":
             return "yellow"
-        if block.kind == "tool":
+        if block.kind in {"tool", "tool_output"}:
             return "yellow"
         if block.kind == "status":
             return "dim"

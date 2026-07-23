@@ -687,6 +687,57 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_t_expands_folded_tool_output_block(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                output = "\n".join(f"line {index}" for index in range(30))
+                thread = thread_with_messages(
+                    Path(temp_dir),
+                    "019f-tool-fold",
+                    "cli",
+                    ["Run tests"],
+                    ["Done"],
+                    extra_records=[
+                        {
+                            "timestamp": "2026-07-10T12:00:03.000Z",
+                            "type": "response_item",
+                            "payload": {
+                                "type": "function_call",
+                                "status": "completed",
+                                "call_id": "call_1",
+                                "name": "exec_command",
+                                "arguments": "{}",
+                            },
+                        },
+                        {
+                            "timestamp": "2026-07-10T12:00:04.000Z",
+                            "type": "response_item",
+                            "payload": {
+                                "type": "function_call_output",
+                                "call_id": "call_1",
+                                "output": output,
+                            },
+                        },
+                    ],
+                )
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.press("enter")
+                    await pilot.pause()
+                    transcript = app.query_one("#transcript", tui_textual.ListView)
+                    transcript.index = 2
+
+                    await pilot.press("t")
+                    await pilot.pause()
+
+                    block = app.transcript_blocks[2]
+                    self.assertEqual(block.kind, "tool_output")
+                    self.assertIn(block.id, app.expanded_block_ids)
+                    self.assertIn("line 29", block.detail_text)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_status_line_shows_model_and_context_usage(self) -> None:
         async def run_case() -> None:
             with tempfile.TemporaryDirectory() as temp_dir:
