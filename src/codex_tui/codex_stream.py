@@ -45,6 +45,12 @@ class StreamToolOutputDetail:
     detail_text: str
 
 
+@dataclass(frozen=True)
+class StreamFileChangeDetail:
+    rendered: str
+    patch_text: str
+
+
 def codex_exec_command(
     codex_bin: Path,
     *,
@@ -120,12 +126,36 @@ def tool_output_detail_from_stream_record(
     )
 
 
+def file_change_detail_from_stream_record(
+    record: dict[str, object],
+    *,
+    call_labels: dict[str, str] | None = None,
+) -> StreamFileChangeDetail | None:
+    payload = apply_patch_call_payload(record)
+    if payload is None:
+        return None
+    patch_text = str(payload.get("input") or "")
+    if not patch_text:
+        return None
+    return StreamFileChangeDetail(
+        rendered=render_custom_tool_call(payload, call_labels=call_labels),
+        patch_text=patch_text,
+    )
+
+
 def function_tool_output_payload(record: dict[str, object]) -> dict[str, object] | None:
     for payload in stream_payloads(record):
         payload_type = payload.get("type")
         if payload_type not in {"function_call_output", "custom_tool_call_output"}:
             continue
         return payload
+    return None
+
+
+def apply_patch_call_payload(record: dict[str, object]) -> dict[str, object] | None:
+    for payload in stream_payloads(record):
+        if payload.get("type") == "custom_tool_call" and payload.get("name") == "apply_patch":
+            return payload
     return None
 
 
@@ -323,7 +353,9 @@ def render_custom_tool_call(
     store_call_label(payload, call_labels, name)
     value = payload.get("input")
     if name == "apply_patch":
-        return "[tool] apply_patch"
+        path_text = patch_paths_summary(str(value or ""))
+        suffix = f": {path_text}" if path_text else ""
+        return f"[tool] apply_patch{suffix}"
     rendered_input = compact_value(parse_jsonish(value) if isinstance(value, str) else value)
     suffix = f": {rendered_input}" if rendered_input else ""
     return f"[tool] {name}{suffix}"
@@ -553,6 +585,33 @@ def stringify_output(value: object) -> str:
     if isinstance(value, str):
         return value
     return json.dumps(value, ensure_ascii=False, indent=2)
+
+
+def patch_paths_summary(patch_text: str) -> str:
+    names = [Path(path).name or path for path in patch_paths_from_text(patch_text)]
+    if not names:
+        return ""
+    if len(names) <= 3:
+        return ", ".join(names)
+    return ", ".join(names[:3]) + f", +{len(names) - 3} more"
+
+
+def patch_paths_from_text(patch_text: str) -> list[str]:
+    paths: list[str] = []
+    prefixes = (
+        "*** Add File: ",
+        "*** Update File: ",
+        "*** Delete File: ",
+        "*** Move to: ",
+    )
+    for line in patch_text.splitlines():
+        for prefix in prefixes:
+            if line.startswith(prefix):
+                value = line.removeprefix(prefix).strip()
+                if value and value not in paths:
+                    paths.append(value)
+                break
+    return paths
 
 
 def folded_tool_output(text: str) -> str:

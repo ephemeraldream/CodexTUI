@@ -11,6 +11,7 @@ import path_bootstrap  # noqa: F401
 from codex_tui.codex_stream import (
     CodexStreamRenderer,
     codex_exec_command,
+    file_change_detail_from_stream_record,
     run_codex_json_stream,
     text_from_json_line,
 )
@@ -241,6 +242,39 @@ class CodexStreamTests(unittest.TestCase):
             renderer.render_line(patch_line),
             "[tool] apply_patch applied: app.py, test_app.py",
         )
+
+    def test_renderer_streams_apply_patch_call_with_changed_paths(self) -> None:
+        patch_text = (
+            "*** Begin Patch\n"
+            "*** Update File: src/app.py\n"
+            "@@\n"
+            "-old\n"
+            "+new\n"
+            "*** Add File: tests/test_app.py\n"
+            "+def test_app():\n"
+            "+    pass\n"
+            "*** End Patch\n"
+        )
+        record = {
+            "type": "response_item",
+            "payload": {
+                "type": "custom_tool_call",
+                "name": "apply_patch",
+                "call_id": "call_patch",
+                "input": patch_text,
+            },
+        }
+        line = json.dumps(record)
+
+        rendered = text_from_json_line(line)
+        detail = file_change_detail_from_stream_record(record, call_labels={})
+
+        self.assertEqual(rendered, "[tool] apply_patch: app.py, test_app.py")
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertEqual(detail.rendered, "[tool] apply_patch: app.py, test_app.py")
+        self.assertEqual(detail.patch_text, patch_text)
+        self.assertNotIn("*** Begin Patch", rendered or "")
 
     def test_renderer_streams_completed_plan_and_thread_rollback(self) -> None:
         plan_line = json_line(

@@ -14,6 +14,7 @@ from urllib.parse import unquote, urlparse
 
 from .codex_stream import (
     codex_exec_command,
+    file_change_detail_from_stream_record,
     run_codex_json_stream,
     tool_output_detail_from_stream_record,
 )
@@ -31,9 +32,12 @@ from .transcript import (
     truncate,
 )
 from .transcript_blocks import (
+    FileChange,
     SessionInfo,
     TranscriptBlock,
+    changed_paths_summary,
     default_session_info,
+    patch_paths,
     session_footer_text,
     session_info_for_thread,
     session_info_from_record,
@@ -581,6 +585,7 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.search_timer: Timer | None = None
             self.live_call_labels: dict[str, str] = {}
             self.live_tool_output_details: dict[str, str] = {}
+            self.live_file_change_details: dict[str, tuple[FileChange, ...]] = {}
 
         def compose(self) -> ComposeResult:
             yield Header(show_clock=True)
@@ -888,6 +893,7 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.streaming = True
             self.live_call_labels.clear()
             self.live_tool_output_details.clear()
+            self.live_file_change_details.clear()
             suffix = f" with {len(payload.image_paths)} image(s)" if payload.image_paths else ""
             if thread is None:
                 self.new_dialog_active = True
@@ -956,11 +962,13 @@ if TEXTUAL_IMPORT_ERROR is None:
                 return
             stripped = block.rstrip()
             detail_text = self.live_tool_output_details.pop(stripped, "")
+            file_changes = self.live_file_change_details.pop(stripped, ())
             self.append_transcript_block(
                 transcript_block_from_stream_block(
                     stripped,
                     self.next_live_block_id("stream"),
                     detail_text=detail_text,
+                    file_changes=file_changes,
                 )
             )
 
@@ -1018,6 +1026,14 @@ if TEXTUAL_IMPORT_ERROR is None:
                 detail = tool_output_detail_from_stream_record(record, call_labels=self.live_call_labels)
                 if detail is not None:
                     self.live_tool_output_details[detail.rendered] = detail.detail_text
+                file_detail = file_change_detail_from_stream_record(record, call_labels=self.live_call_labels)
+                if file_detail is not None:
+                    changes = tuple(
+                        FileChange(path=changed_path, diff=file_detail.patch_text)
+                        for changed_path in patch_paths(file_detail.patch_text)
+                    )
+                    if changes:
+                        self.live_file_change_details[file_detail.rendered] = changes
             self.current_session_info = session_info_from_record(record, current=self.current_session_info)
             self.render_status_line()
 
@@ -1265,6 +1281,7 @@ if TEXTUAL_IMPORT_ERROR is None:
         block_id: str,
         *,
         detail_text: str = "",
+        file_changes: tuple[FileChange, ...] = (),
     ) -> TranscriptBlock:
         message = chat_message_from_stream_block(block)
         if message is not None:
@@ -1278,6 +1295,15 @@ if TEXTUAL_IMPORT_ERROR is None:
                 phase=message.phase,
             )
         stripped = block.rstrip()
+        if file_changes:
+            return TranscriptBlock(
+                id=block_id,
+                kind="file_change",
+                title="File change",
+                subtitle="live",
+                text=changed_paths_summary(change.path for change in file_changes),
+                file_changes=file_changes,
+            )
         kind = kind_for_stream_block(stripped)
         if detail_text:
             kind = "tool_output"

@@ -831,6 +831,66 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_live_apply_patch_keeps_diff_for_expansion(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                patch_text = (
+                    "*** Begin Patch\n"
+                    "*** Update File: src/app.py\n"
+                    "@@\n"
+                    "-old\n"
+                    "+new\n"
+                    "*** End Patch\n"
+                )
+                thread = thread_with_messages(
+                    Path(temp_dir),
+                    "019f-live-patch",
+                    "cli",
+                    ["Patch it"],
+                    ["Ready"],
+                )
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                renderer = CodexStreamRenderer()
+                record = {
+                    "timestamp": "2026-07-10T12:00:03.000Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "custom_tool_call",
+                        "status": "completed",
+                        "call_id": "call_patch",
+                        "name": "apply_patch",
+                        "input": patch_text,
+                    },
+                }
+                rendered = renderer.render_line(json.dumps(record))
+                assert rendered is not None
+
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.press("enter")
+                    await pilot.pause()
+
+                    app.update_session_info_from_stream_record(record)
+                    app.append_stream_block(rendered)
+                    await pilot.pause()
+
+                    block = app.transcript_blocks[-1]
+                    self.assertEqual(rendered, "[tool] apply_patch: app.py")
+                    self.assertEqual(block.kind, "file_change")
+                    self.assertTrue(block.expandable)
+                    self.assertEqual(block.text, "app.py")
+                    self.assertEqual(block.file_changes[0].path, "src/app.py")
+                    self.assertIn("+new", block.file_changes[0].diff)
+
+                    transcript = app.query_one("#transcript", tui_textual.ListView)
+                    transcript.index = len(app.transcript_blocks) - 1
+                    await pilot.press("t")
+                    await pilot.pause()
+
+                    self.assertIn(block.id, app.expanded_block_ids)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_status_line_shows_model_and_context_usage(self) -> None:
         async def run_case() -> None:
             with tempfile.TemporaryDirectory() as temp_dir:

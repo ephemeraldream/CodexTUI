@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from .codex_stream import folded_tool_output, stringify_output
+from .codex_stream import folded_tool_output, patch_paths_from_text, stringify_output
 from .models import ChatMessage, ThreadRow
 from .paths import codex_home
 from .transcript import (
@@ -205,21 +205,7 @@ def apply_patch_calls(path: Path) -> Iterable[tuple[str, str]]:
 
 
 def patch_paths(patch_text: str) -> list[str]:
-    paths: list[str] = []
-    prefixes = (
-        "*** Add File: ",
-        "*** Update File: ",
-        "*** Delete File: ",
-        "*** Move to: ",
-    )
-    for line in patch_text.splitlines():
-        for prefix in prefixes:
-            if line.startswith(prefix):
-                value = line.removeprefix(prefix).strip()
-                if value and value not in paths:
-                    paths.append(value)
-                break
-    return paths
+    return patch_paths_from_text(patch_text)
 
 
 def changed_paths_summary(paths: Iterable[str]) -> str:
