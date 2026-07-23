@@ -148,24 +148,34 @@ class CodexStore:
             elif db_filtered_empty:
                 return None
         elif readable_threads:
-            newest_state_recency_ms = max(thread.recency_at_ms for thread in readable_threads)
-            newer_file_threads = self.scan_threads_from_files(
-                include_archived=include_archived,
-                limit=None,
-                query=query,
-                source=source,
-                cwd=cwd,
-                newer_than_ms=newest_state_recency_ms,
-            )
-            if newer_file_threads:
+            if needs_python_filter:
+                file_threads = self.scan_threads_from_files(
+                    include_archived=include_archived,
+                    limit=None,
+                    query=query,
+                    source=source,
+                    cwd=cwd,
+                )
+            else:
+                newest_state_recency_ms = max(thread.recency_at_ms for thread in readable_threads)
+                file_threads = self.scan_threads_from_files(
+                    include_archived=include_archived,
+                    limit=None,
+                    query=query,
+                    source=source,
+                    cwd=cwd,
+                    newer_than_ms=newest_state_recency_ms,
+                )
+            unindexed_file_threads: list[ThreadRow] = []
+            if file_threads:
                 indexed_keys = self.indexed_state_thread_keys()
-                newer_file_threads = [
+                unindexed_file_threads = [
                     thread
-                    for thread in newer_file_threads
+                    for thread in file_threads
                     if thread_key_values(thread).isdisjoint(indexed_keys)
                 ]
-            if newer_file_threads:
-                threads = merge_thread_lists(threads, newer_file_threads)
+            if unindexed_file_threads:
+                threads = merge_thread_lists(threads, unindexed_file_threads)
                 merged_with_fallback = True
         if limit is not None and limit >= 0 and (
             needs_python_filter or merged_with_fallback or reloaded_without_sql_limit

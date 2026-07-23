@@ -551,6 +551,53 @@ class CliTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], ["019f-test-unindexed-query"])
         self.assertEqual(rows[0]["title"], "Readable unindexed history session")
 
+    def test_list_merges_older_matching_unindexed_session_file_with_sqlite_query_results(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            indexed_rollout = write_cli_session(
+                home,
+                "019f-test-indexed-query",
+                cwd="/tmp/project",
+                user_message="Shared filtered indexed session",
+            )
+            unindexed_rollout = write_cli_session(
+                home,
+                "019f-test-unindexed-older-query",
+                cwd="/tmp/project",
+                user_message="Shared filtered unindexed older session",
+            )
+            os.utime(unindexed_rollout, (1783677604, 1783677604))
+            write_threads_db_row(
+                home,
+                session_id="019f-test-indexed-query",
+                cwd="/tmp/project",
+                source="cli",
+                rollout_path=str(indexed_rollout),
+                title="Shared filtered indexed session",
+                preview="",
+                first_user_message="Shared filtered indexed session",
+                recency_at_ms=1783677605000,
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json", "-q", "Shared filtered", "--limit", "5"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(
+            [row["id"] for row in rows],
+            ["019f-test-indexed-query", "019f-test-unindexed-older-query"],
+        )
+
     def test_list_uses_newer_state_database_when_state_five_is_readable(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
