@@ -464,6 +464,38 @@ class CliTests(unittest.TestCase):
         rows = [json.loads(line) for line in result.stdout.splitlines()]
         self.assertEqual([row["id"] for row in rows], ["019f-test-valid-after-corrupt"])
 
+    def test_list_skips_jsonl_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            valid = write_cli_session(
+                home,
+                "019f-test-valid-after-jsonl-dir",
+                cwd="/tmp/project",
+                user_message="Valid session after JSONL directory",
+            )
+            jsonl_dir = home / "sessions" / "2026" / "07" / "10" / (
+                "rollout-2026-07-10T09-00-00-019f-test-jsonl-dir.jsonl"
+            )
+            jsonl_dir.mkdir()
+            os.utime(valid, (100, 100))
+            os.utime(jsonl_dir, (200, 200))
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json", "--limit", "1"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-valid-after-jsonl-dir"])
+
     def test_list_merges_newer_unindexed_session_file_with_readable_sqlite_history(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)

@@ -280,6 +280,8 @@ class CodexStore:
             if root.exists():
                 for path in root.rglob("*.jsonl"):
                     try:
+                        if not path.is_file():
+                            continue
                         mtime_ms = int(path.stat().st_mtime * 1000)
                     except OSError:
                         continue
