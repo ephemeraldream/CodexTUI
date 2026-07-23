@@ -1024,6 +1024,69 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_successful_resume_with_stale_persisted_history_keeps_live_transcript(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                thread = thread_with_messages(root, "019f-resume-stale", "cli", ["Question"], ["Original answer"])
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.press("enter")
+                    await pilot.pause()
+                    app.run_worker = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+                    submitted = app.submit_composer("follow up before history flush")
+                    app.append_stream_block("CODEX final\n  Live streamed answer")
+                    app.finish_stream(thread.id, 0)
+                    await pilot.pause()
+
+                    self.assertTrue(submitted)
+                    self.assertEqual(app.current_thread.id, thread.id)
+                    rendered_lines = "\n".join(block.text for block in app.transcript_blocks)
+                    self.assertIn("Original answer", rendered_lines)
+                    self.assertIn("follow up before history flush", rendered_lines)
+                    self.assertIn("Live streamed answer", rendered_lines)
+                    status = str(app.query_one("#status-line", tui_textual.Static).render())
+                    self.assertIn("Codex finished.", status)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_successful_new_stream_with_stale_persisted_history_keeps_live_transcript(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                existing = thread_with_messages(root, "019f-existing-dialog", "cli", ["Question"], ["Answer"])
+                created = thread_with_session_meta(root, "019f-created-stale", "exec", "New prompt")
+                threads = [existing]
+                app = tui_textual.CodexTextualApp(lambda: list(threads))
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.press("n")
+                    await pilot.pause()
+                    app.run_worker = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+                    submitted = app.submit_composer("New prompt")
+                    app.update_session_info_from_stream_record({"type": "thread.started", "thread_id": created.id})
+                    app.append_stream_block("CODEX final\n  Created live answer")
+                    threads.insert(0, created)
+                    app.finish_new_stream(0)
+                    await pilot.pause()
+
+                    self.assertTrue(submitted)
+                    self.assertEqual(app.current_thread.id, created.id)
+                    self.assertFalse(app.new_dialog_active)
+                    rendered_lines = "\n".join(block.text for block in app.transcript_blocks)
+                    self.assertIn("New prompt", rendered_lines)
+                    self.assertIn("Created live answer", rendered_lines)
+                    self.assertNotIn("No chat messages found", rendered_lines)
+                    title = str(app.query_one("#conversation-title", tui_textual.Static).render())
+                    self.assertIn("New prompt", title)
+                    status = str(app.query_one("#status-line", tui_textual.Static).render())
+                    self.assertIn("Codex finished.", status)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_submit_uses_pending_clipboard_image_paths(self) -> None:
         async def run_case() -> None:
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -1537,6 +1600,29 @@ def thread_with_messages(
         recency_at_ms=1783677605000,
         preview="",
         first_user_message=users[0],
+    )
+
+
+def thread_with_session_meta(root: Path, thread_id: str, source: str, title: str) -> ThreadRow:
+    path = root / f"{thread_id}.jsonl"
+    record = {
+        "timestamp": "2026-07-10T12:00:00.000Z",
+        "type": "session_meta",
+        "payload": {"id": thread_id, "cwd": "/tmp/project", "source": source},
+    }
+    path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    return ThreadRow(
+        id=thread_id,
+        title=title,
+        cwd="/tmp/project",
+        source=source,
+        archived=False,
+        rollout_path=str(path),
+        created_at_ms=1783677600000,
+        updated_at_ms=1783677605000,
+        recency_at_ms=1783677605000,
+        preview="",
+        first_user_message=title,
     )
 
 

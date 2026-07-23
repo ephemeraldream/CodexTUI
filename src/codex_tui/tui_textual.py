@@ -876,6 +876,7 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.live_block_counter = 0
             self.live_thread_id = ""
             self.thread_ids_before_new_stream: set[str] = set()
+            self.stream_persisted_baseline_block_count = 0
             self.new_dialog_active = False
             self.streaming = False
             self.history_visible = True
@@ -1242,6 +1243,11 @@ if TEXTUAL_IMPORT_ERROR is None:
                 self.set_status("Codex is still responding.")
                 return False
             thread = self.current_thread
+            self.stream_persisted_baseline_block_count = (
+                len(transcript_blocks_for_thread(thread))
+                if thread is not None
+                else 0
+            )
             self.append_transcript_block(
                 TranscriptBlock(
                     id=self.next_live_block_id("user"),
@@ -1347,13 +1353,15 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.streaming = False
             self.load_threads()
             refreshed = next((thread for thread in self.threads if thread.id == thread_id), self.current_thread)
-            if code == 0 and refreshed is not None:
+            if code == 0 and refreshed is not None and self.persisted_stream_transcript_ready(refreshed):
                 self.current_thread = refreshed
                 self.render_conversation(refreshed)
                 self.refresh_history()
             else:
                 if refreshed is not None:
                     self.current_thread = refreshed
+                    if code == 0:
+                        self.render_conversation_title(refreshed)
                 self.refresh_history(open_visible_selection=False, update_status=False)
             status = "Codex finished." if code == 0 else f"Codex exited with status {code}."
             self.set_status(status)
@@ -1371,12 +1379,20 @@ if TEXTUAL_IMPORT_ERROR is None:
                     query=self.query,
                 )
                 self.current_thread = refreshed
-                self.render_conversation(refreshed)
-                self.refresh_history()
+                if code == 0 and self.persisted_stream_transcript_ready(refreshed):
+                    self.render_conversation(refreshed)
+                    self.refresh_history()
+                else:
+                    if code == 0:
+                        self.render_conversation_title(refreshed)
+                    self.refresh_history(open_visible_selection=False, update_status=False)
             else:
                 self.refresh_history(open_visible_selection=False, update_status=False)
             status = "Codex finished." if code == 0 else f"Codex exited with status {code}."
             self.set_status(status)
+
+        def persisted_stream_transcript_ready(self, thread: ThreadRow) -> bool:
+            return len(transcript_blocks_for_thread(thread)) >= self.stream_persisted_baseline_block_count + 2
 
         def created_thread_after_new_stream(self) -> ThreadRow | None:
             if self.live_thread_id:
