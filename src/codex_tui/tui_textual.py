@@ -879,11 +879,12 @@ if TEXTUAL_IMPORT_ERROR is None:
                     self.render_conversation(selected_thread)
             elif not self.new_dialog_active:
                 self.clear_conversation_for_empty_history()
-            self.set_status(
-                self.empty_history_status()
-                if not self.entries
-                else history_loaded_status(self.history_mode, len(self.entries))
-            )
+            if not self.new_dialog_active:
+                self.set_status(
+                    self.empty_history_status()
+                    if not self.entries
+                    else history_loaded_status(self.history_mode, len(self.entries))
+                )
 
         def refresh_width_sensitive_layout(self) -> None:
             self.render_history_mode_line()
@@ -915,6 +916,18 @@ if TEXTUAL_IMPORT_ERROR is None:
                 if self.search_timer is not None:
                     self.search_timer.stop()
                 self.search_timer = self.set_timer(SEARCH_DEBOUNCE_SECONDS, self.refresh_history)
+
+        def clear_history_search(self) -> None:
+            if self.search_timer is not None:
+                self.search_timer.stop()
+                self.search_timer = None
+            self.query = ""
+            search = self.query_one("#history-search", Input)
+            if search.value:
+                search.value = ""
+            if self.search_timer is not None:
+                self.search_timer.stop()
+                self.search_timer = None
 
         def on_input_submitted(self, event: Input.Submitted) -> None:
             if event.input.id == "history-search":
@@ -1030,8 +1043,7 @@ if TEXTUAL_IMPORT_ERROR is None:
             if self.streaming:
                 self.set_status("Codex is still responding.")
                 return
-            self.query = ""
-            self.query_one("#history-search", Input).value = ""
+            self.clear_history_search()
             self.current_thread = None
             self.current_session_info = default_session_info()
             self.live_thread_id = ""
@@ -1048,6 +1060,7 @@ if TEXTUAL_IMPORT_ERROR is None:
                 )
             ]
             self.query_one("#conversation-title", Static).update("New Codex dialog")
+            self.refresh_history()
             self.render_transcript_blocks(preserve_index=False)
             self.set_status("New dialog. Type the first message below.")
             self.update_composer_help()

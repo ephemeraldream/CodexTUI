@@ -356,6 +356,37 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_new_dialog_clears_pending_search_without_overwriting_status(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                first = thread_with_messages(root, "019f-first-new-search", "cli", ["First"], ["First answer"])
+                second = thread_with_messages(root, "019f-second-new-search", "cli", ["Second"], ["Second answer"])
+                app = tui_textual.CodexTextualApp(lambda: [first, second])
+                async with app.run_test(size=(110, 24)) as pilot:
+                    search = app.query_one("#history-search", tui_textual.Input)
+                    search.focus()
+                    await pilot.press("S", "e", "c", "o", "n", "d")
+                    await pilot.pause()
+
+                    await pilot.press("escape")
+                    await pilot.pause()
+                    await pilot.press("n")
+                    await pilot.pause(tui_textual.SEARCH_DEBOUNCE_SECONDS + 0.1)
+
+                    status = str(app.query_one("#status-line", tui_textual.Static).render())
+                    rendered_blocks = "\n".join(block.text for block in app.transcript_blocks)
+                    self.assertTrue(app.new_dialog_active)
+                    self.assertEqual(app.query, "")
+                    self.assertEqual(search.value, "")
+                    self.assertEqual(len(app.entries), 2)
+                    self.assertIn("New dialog. Type the first message below.", status)
+                    self.assertIn("New Codex dialog.", rendered_blocks)
+                    self.assertNotIn("Second answer", rendered_blocks)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_i_and_c_focus_composer(self) -> None:
         async def run_case() -> None:
             with tempfile.TemporaryDirectory() as temp_dir:
