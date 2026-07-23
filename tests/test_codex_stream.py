@@ -109,6 +109,36 @@ class CodexStreamTests(unittest.TestCase):
 
         self.assertEqual(text_from_json_line(line), "CODEX\n  Ок, ничего не делаю.")
 
+    def test_renderer_streams_top_level_completed_message_items(self) -> None:
+        assistant_line = json.dumps(
+            {
+                "type": "item.completed",
+                "item": {
+                    "id": "item_1",
+                    "type": "message",
+                    "role": "assistant",
+                    "phase": "final_answer",
+                    "content": [{"type": "output_text", "text": "Content reply."}],
+                },
+            }
+        )
+        user_line = json.dumps(
+            {
+                "type": "item.completed",
+                "item": {
+                    "id": "item_2",
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "Content request."}],
+                },
+            }
+        )
+
+        self.assertEqual(
+            text_from_json_line(assistant_line), "CODEX final\n  Content reply."
+        )
+        self.assertEqual(text_from_json_line(user_line), "YOU\n  Content request.")
+
     def test_renderer_streams_top_level_turn_usage(self) -> None:
         line = json.dumps(
             {

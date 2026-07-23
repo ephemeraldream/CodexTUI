@@ -190,13 +190,18 @@ def text_from_top_level_item(
     if not isinstance(item, dict):
         return None
     item_type = str(item.get("type") or "")
-    if item_type == "agent_message":
-        text = str(item.get("text") or "")
+    role = str(item.get("role") or "")
+    if item_type == "agent_message" or (
+        item_type == "message" and role == "assistant"
+    ):
+        text = text_from_payload(item)
         phase = str(item.get("phase") or "")
         if text and not looks_like_autonomous_status_update(text, phase):
             return render_assistant_message(text, phase)
         return None
-    if item_type == "user_message":
+    if item_type == "user_message" or (
+        item_type == "message" and role == "user"
+    ):
         return render_user_message(item)
     if item_type == "reasoning":
         summary = reasoning_summary_text(item.get("summary"))
