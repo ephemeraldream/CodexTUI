@@ -105,6 +105,26 @@ class TextualTuiModelTests(unittest.TestCase):
         self.assertIn("[Image 1] screenshot.png", composer_display_text(payload))
         self.assertIn("[Image 2] other image.jpg", composer_display_text(payload))
 
+    def test_parse_composer_payload_preserves_prompt_quotes(self) -> None:
+        payload = parse_composer_payload('preserve "quoted words" and {"json": true}')
+
+        self.assertEqual(payload.prompt, 'preserve "quoted words" and {"json": true}')
+        self.assertEqual(payload.image_paths, ())
+
+    def test_parse_composer_payload_preserves_quotes_with_attachments(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            payload = parse_composer_payload(
+                '/image "screen shot.png" explain "quoted words" and {"json": true}',
+                cwd=root,
+            )
+
+        self.assertEqual(payload.prompt, 'explain "quoted words" and {"json": true}')
+        self.assertEqual(
+            payload.image_paths,
+            (str((root / "screen shot.png").resolve(strict=False)),),
+        )
+
     def test_image_paths_from_paste_text_accepts_existing_image_paths(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -855,6 +875,29 @@ class TextualTuiModelTests(unittest.TestCase):
                     self.assertTrue(submitted)
                     self.assertEqual(calls, [("describe it", (str(image_path),))])
                     self.assertEqual(app.pending_image_paths, [])
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_submit_preserves_quoted_prompt_text(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                thread = thread_with_messages(root, "019f-quoted-prompt", "cli", ["Question"], ["Answer"])
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                calls: list[str] = []
+
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.press("enter")
+                    await pilot.pause()
+                    app.resume_worker = lambda _thread, prompt, image_paths=(): calls.append(prompt)  # type: ignore[method-assign]
+                    app.run_worker = lambda worker, *_args, **_kwargs: worker()  # type: ignore[method-assign]
+
+                    submitted = app.submit_composer('preserve "quoted words" and {"json": true}')
+                    await pilot.pause()
+
+                    self.assertTrue(submitted)
+                    self.assertEqual(calls, ['preserve "quoted words" and {"json": true}'])
 
         asyncio.run(run_case())
 

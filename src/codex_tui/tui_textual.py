@@ -107,6 +107,13 @@ class ComposerPayload:
     image_paths: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class ComposerToken:
+    value: str
+    start: int
+    end: int
+
+
 ThreadLoader = Callable[[], list[ThreadRow]]
 
 
@@ -292,26 +299,81 @@ def parse_composer_payload(value: str, *, cwd: Path | None = None) -> ComposerPa
     if not text:
         return ComposerPayload("")
     try:
-        tokens = shlex.split(text)
+        tokens = composer_tokens(text)
     except ValueError:
         return ComposerPayload(text)
     root = cwd or Path.cwd()
-    prompt_tokens: list[str] = []
     image_paths: list[str] = []
+    attachment_ranges: list[tuple[int, int]] = []
     index = 0
     while index < len(tokens):
         token = tokens[index]
-        if token in IMAGE_ATTACHMENT_PREFIXES and index + 1 < len(tokens):
-            image_paths.append(normalized_attachment_path(tokens[index + 1], root))
+        if token.value in IMAGE_ATTACHMENT_PREFIXES and index + 1 < len(tokens):
+            image_paths.append(normalized_attachment_path(tokens[index + 1].value, root))
+            attachment_ranges.append((token.start, tokens[index + 1].end))
             index += 2
             continue
-        if token.startswith("@") and looks_like_image_path(token[1:]):
-            image_paths.append(normalized_attachment_path(token[1:], root))
+        if token.value.startswith("@") and looks_like_image_path(token.value[1:]):
+            image_paths.append(normalized_attachment_path(token.value[1:], root))
+            attachment_ranges.append((token.start, token.end))
             index += 1
             continue
-        prompt_tokens.append(token)
         index += 1
-    return ComposerPayload(" ".join(prompt_tokens).strip(), tuple(image_paths))
+    prompt = text if not attachment_ranges else remove_composer_token_ranges(text, attachment_ranges)
+    return ComposerPayload(prompt, tuple(image_paths))
+
+
+def composer_tokens(text: str) -> list[ComposerToken]:
+    tokens: list[ComposerToken] = []
+    index = 0
+    length = len(text)
+    while index < length:
+        while index < length and text[index].isspace():
+            index += 1
+        if index >= length:
+            break
+        start = index
+        value: list[str] = []
+        quote = ""
+        while index < length:
+            char = text[index]
+            if quote:
+                if char == quote:
+                    quote = ""
+                    index += 1
+                    continue
+                if quote == '"' and char == "\\" and index + 1 < length:
+                    index += 1
+                    value.append(text[index])
+                    index += 1
+                    continue
+                value.append(char)
+                index += 1
+                continue
+            if char.isspace():
+                break
+            if char in {"'", '"'}:
+                quote = char
+                index += 1
+                continue
+            if char == "\\" and index + 1 < length:
+                index += 1
+                value.append(text[index])
+                index += 1
+                continue
+            value.append(char)
+            index += 1
+        if quote:
+            raise ValueError("No closing quotation")
+        tokens.append(ComposerToken("".join(value), start, index))
+    return tokens
+
+
+def remove_composer_token_ranges(text: str, ranges: Iterable[tuple[int, int]]) -> str:
+    result = text
+    for start, end in sorted(ranges, reverse=True):
+        result = result[:start] + result[end:]
+    return " ".join(result.strip().split())
 
 
 def looks_like_image_path(value: str) -> bool:
