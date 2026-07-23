@@ -522,8 +522,86 @@ def mode_line_text(mode: str, count: int, *, width: int | None = None) -> str:
     return truncate(variants[-1], width)
 
 
-def empty_history_title(query: str) -> str:
-    return "No matching dialogs" if query.strip() else "No Codex dialogs"
+def empty_history_title(query: str, *, mode: str = "conversations") -> str:
+    if query.strip():
+        return "No matching dialogs"
+    if mode == "runs":
+        return "No Codex runs"
+    if mode == "all":
+        return "No Codex history"
+    return "No Codex dialogs"
+
+
+def empty_history_text(
+    query: str,
+    *,
+    mode: str = "conversations",
+    alternate_mode: str = "",
+    alternate_count: int = 0,
+) -> str:
+    if query.strip():
+        text = "No Codex dialogs match the current search."
+    elif mode == "runs":
+        text = "No Codex runs found."
+    elif mode == "all":
+        text = "No Codex history found."
+    else:
+        text = "No Codex dialogs found."
+    if alternate_mode and alternate_count > 0:
+        alternate_label = history_mode_entry_label(alternate_mode, alternate_count)
+        text = f"{text} Press g to view {alternate_count} {alternate_label}."
+    return text
+
+
+def empty_history_status(
+    query: str,
+    *,
+    mode: str = "conversations",
+    alternate_mode: str = "",
+    alternate_count: int = 0,
+) -> str:
+    if alternate_mode and alternate_count > 0:
+        current_label = history_mode_status_label(mode)
+        alternate_label = history_mode_entry_label(alternate_mode, alternate_count)
+        return f"No {current_label} shown. Press g for {alternate_count} {alternate_label}."
+    if query.strip() or mode == "conversations":
+        return "No dialogs found."
+    return f"No {history_mode_status_label(mode)} found."
+
+
+def next_nonempty_history_mode(
+    threads: Iterable[ThreadRow],
+    *,
+    current_mode: str,
+    query: str = "",
+) -> tuple[str, int]:
+    thread_list = list(threads)
+    try:
+        current_index = HISTORY_MODES.index(current_mode)
+    except ValueError:
+        return "", 0
+    for offset in range(1, len(HISTORY_MODES)):
+        mode = HISTORY_MODES[(current_index + offset) % len(HISTORY_MODES)]
+        count = len(build_history_entries(thread_list, mode=mode, query=query))
+        if count:
+            return mode, count
+    return "", 0
+
+
+def history_mode_entry_label(mode: str, count: int) -> str:
+    if mode == "runs":
+        return "run group" if count == 1 else "run groups"
+    if mode == "all":
+        return "history row" if count == 1 else "history rows"
+    return "conversation" if count == 1 else "conversations"
+
+
+def history_mode_status_label(mode: str) -> str:
+    if mode == "runs":
+        return "runs"
+    if mode == "all":
+        return "history"
+    return "dialogs"
 
 
 def image_attachment_help_text(count: int) -> str:
@@ -771,7 +849,7 @@ if TEXTUAL_IMPORT_ERROR is None:
                     self.render_conversation(selected_thread)
             elif not self.new_dialog_active:
                 self.clear_conversation_for_empty_history()
-            self.set_status("No dialogs found." if not self.entries else f"{len(self.entries)} dialogs loaded.")
+            self.set_status(self.empty_history_status() if not self.entries else f"{len(self.entries)} dialogs loaded.")
 
         def refresh_width_sensitive_layout(self) -> None:
             self.render_history_mode_line()
@@ -990,11 +1068,13 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.current_thread = None
             self.current_session_info = default_session_info()
             self.expanded_block_ids.clear()
-            title = empty_history_title(self.query)
-            text = (
-                "No Codex dialogs match the current search."
-                if self.query.strip()
-                else "No Codex dialogs found."
+            alternate_mode, alternate_count = self.empty_history_alternate()
+            title = empty_history_title(self.query, mode=self.history_mode)
+            text = empty_history_text(
+                self.query,
+                mode=self.history_mode,
+                alternate_mode=alternate_mode,
+                alternate_count=alternate_count,
             )
             self.query_one("#conversation-title", Static).update(title)
             self.transcript_blocks = [
@@ -1184,9 +1264,29 @@ if TEXTUAL_IMPORT_ERROR is None:
             if self.current_thread is not None:
                 self.render_conversation_title(self.current_thread)
                 return
-            title = "New Codex dialog" if self.new_dialog_active else empty_history_title(self.query)
+            title = (
+                "New Codex dialog"
+                if self.new_dialog_active
+                else empty_history_title(self.query, mode=self.history_mode)
+            )
             self.query_one("#conversation-title", Static).update(
                 truncate(title, self.conversation_content_width())
+            )
+
+        def empty_history_alternate(self) -> tuple[str, int]:
+            return next_nonempty_history_mode(
+                self.threads,
+                current_mode=self.history_mode,
+                query=self.query,
+            )
+
+        def empty_history_status(self) -> str:
+            alternate_mode, alternate_count = self.empty_history_alternate()
+            return empty_history_status(
+                self.query,
+                mode=self.history_mode,
+                alternate_mode=alternate_mode,
+                alternate_count=alternate_count,
             )
 
         def conversation_content_width(self) -> int:
