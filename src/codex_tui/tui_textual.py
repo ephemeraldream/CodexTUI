@@ -569,6 +569,16 @@ def empty_history_status(
     return f"No {history_mode_status_label(mode)} found."
 
 
+def history_loaded_status(mode: str, count: int) -> str:
+    if mode == "runs":
+        label = "run group" if count == 1 else "run groups"
+    elif mode == "all":
+        label = "history row" if count == 1 else "history rows"
+    else:
+        label = "dialog" if count == 1 else "dialogs"
+    return f"{count} {label} loaded."
+
+
 def next_nonempty_history_mode(
     threads: Iterable[ThreadRow],
     *,
@@ -849,7 +859,11 @@ if TEXTUAL_IMPORT_ERROR is None:
                     self.render_conversation(selected_thread)
             elif not self.new_dialog_active:
                 self.clear_conversation_for_empty_history()
-            self.set_status(self.empty_history_status() if not self.entries else f"{len(self.entries)} dialogs loaded.")
+            self.set_status(
+                self.empty_history_status()
+                if not self.entries
+                else history_loaded_status(self.history_mode, len(self.entries))
+            )
 
         def refresh_width_sensitive_layout(self) -> None:
             self.render_history_mode_line()
@@ -944,6 +958,10 @@ if TEXTUAL_IMPORT_ERROR is None:
             if focused_id == "transcript" and event.key == "g":
                 event.prevent_default()
                 event.stop()
+                if self.current_thread is None and not self.new_dialog_active:
+                    self.pending_gg = False
+                    self.action_cycle_history_mode()
+                    return
                 if self.pending_gg:
                     self.pending_gg = False
                     self.scroll_transcript("home")
