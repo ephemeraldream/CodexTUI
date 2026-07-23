@@ -71,7 +71,7 @@ class CodexStore:
             clauses.append("source = ?")
             params.append(source)
         where = "WHERE " + " AND ".join(clauses) if clauses else ""
-        sql = f"""
+        base_sql = f"""
             SELECT id, title, cwd, source, archived, rollout_path, created_at_ms,
                    updated_at_ms, recency_at_ms, preview, first_user_message
             FROM threads
@@ -79,18 +79,26 @@ class CodexStore:
             ORDER BY recency_at_ms DESC, id DESC
         """
         needs_python_filter = bool(query or cwd)
-        if limit is not None and not needs_python_filter:
+        use_sql_limit = limit is not None and limit >= 0 and not needs_python_filter
+        sql = base_sql
+        sql_params = list(params)
+        if use_sql_limit:
             sql += " LIMIT ?"
-            params.append(limit)
+            sql_params.append(limit)
+        reloaded_without_sql_limit = False
         try:
-            rows = con.execute(sql, params).fetchall()
+            rows = con.execute(sql, sql_params).fetchall()
+            db_threads = [thread_from_state_row(row) for row in rows]
+            if use_sql_limit and any(not thread_rollout_readable(thread) for thread in db_threads):
+                rows = con.execute(base_sql, params).fetchall()
+                db_threads = [thread_from_state_row(row) for row in rows]
+                reloaded_without_sql_limit = True
         except sqlite3.Error:
             return None
         finally:
             con.close()
-        if not rows:
+        if not db_threads:
             return None
-        db_threads = [thread_from_state_row(row) for row in rows]
         db_has_unreadable_rollout = any(not thread_rollout_readable(thread) for thread in db_threads)
         threads = db_threads
         if needs_python_filter:
@@ -101,6 +109,7 @@ class CodexStore:
             ]
         merged_with_fallback = False
         if db_has_unreadable_rollout:
+            readable_threads = [thread for thread in threads if thread_rollout_readable(thread)]
             fallback_threads = self.scan_threads_from_files(
                 include_archived=include_archived,
                 limit=None,
@@ -109,10 +118,14 @@ class CodexStore:
                 cwd=cwd,
             )
             if fallback_threads:
-                readable_threads = [thread for thread in threads if thread_rollout_readable(thread)]
                 threads = merge_thread_lists(readable_threads, fallback_threads)
                 merged_with_fallback = True
-        if limit is not None and (needs_python_filter or merged_with_fallback):
+            elif readable_threads:
+                threads = readable_threads
+                merged_with_fallback = True
+        if limit is not None and limit >= 0 and (
+            needs_python_filter or merged_with_fallback or reloaded_without_sql_limit
+        ):
             threads = threads[:limit]
         return threads
 

@@ -565,6 +565,56 @@ class CliTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], ["019f-test-readable-state-five"])
         self.assertEqual(rows[0]["title"], "Readable older state session")
 
+    def test_list_skips_limited_stale_row_when_same_state_database_has_readable_history(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            readable_rollout = home / "legacy-rollouts" / "readable-state-five.jsonl"
+            write_session_file(
+                readable_rollout,
+                "019f-test-readable-same-db",
+                cwd="/tmp/project",
+                user_message="Readable same database session",
+            )
+            write_threads_db_row(
+                home,
+                session_id="019f-test-stale-same-db",
+                cwd="/tmp/project",
+                source="cli",
+                rollout_path=str(home / "missing-rollout.jsonl"),
+                title="Stale same database session",
+                preview="",
+                first_user_message="Stale same database session",
+                recency_at_ms=1783677607000,
+            )
+            write_threads_db_row(
+                home,
+                session_id="019f-test-readable-same-db",
+                cwd="/tmp/project",
+                source="cli",
+                rollout_path=str(readable_rollout),
+                title="Readable same database session",
+                preview="",
+                first_user_message="Readable same database session",
+                recency_at_ms=1783677605000,
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json", "--limit", "1"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-readable-same-db"])
+        self.assertEqual(rows[0]["title"], "Readable same database session")
+
     def test_single_session_commands_here_resolve_last_in_current_git_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -818,13 +868,14 @@ def write_threads_db_row(
     preview: str,
     first_user_message: str,
     db_name: str = "state_5.sqlite",
+    recency_at_ms: int = 1783677605000,
 ) -> None:
     db_path = home / db_name
     con = sqlite3.connect(db_path)
     try:
         con.execute(
             """
-            CREATE TABLE threads (
+            CREATE TABLE IF NOT EXISTS threads (
                 id TEXT,
                 title TEXT,
                 cwd TEXT,
@@ -851,8 +902,8 @@ def write_threads_db_row(
                 0,
                 rollout_path,
                 1783677600000,
-                1783677605000,
-                1783677605000,
+                recency_at_ms,
+                recency_at_ms,
                 preview,
                 first_user_message,
             ),
