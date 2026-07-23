@@ -978,6 +978,8 @@ if TEXTUAL_IMPORT_ERROR is None:
                 self.focus_history_list()
 
         def action_focus_search(self) -> None:
+            if not self.history_visible:
+                self.set_history_pane_visible(True, focus=False)
             self.query_one("#history-search", Input).focus()
 
         def action_focus_composer(self) -> None:

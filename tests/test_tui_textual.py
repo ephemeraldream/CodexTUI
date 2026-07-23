@@ -523,6 +523,27 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_search_shortcut_reveals_hidden_history_pane(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                thread = thread_with_messages(Path(temp_dir), "019f-hidden-search", "cli", ["Question"], ["Answer"])
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                async with app.run_test(size=(50, 24)) as pilot:
+                    await pilot.pause()
+
+                    pane = app.query_one("#history-pane")
+                    self.assertFalse(pane.display)
+                    self.assertEqual(getattr(app.focused, "id", ""), "transcript")
+
+                    await pilot.press("/")
+                    await pilot.pause()
+
+                    self.assertTrue(pane.display)
+                    self.assertEqual(getattr(app.focused, "id", ""), "history-search")
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_history_search_is_debounced_while_typing(self) -> None:
         async def run_case() -> None:
             with tempfile.TemporaryDirectory() as temp_dir:
