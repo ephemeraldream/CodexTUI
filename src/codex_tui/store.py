@@ -402,6 +402,11 @@ def state_db_unarchived_clause() -> str:
 def state_db_archived_bool(value: object) -> bool:
     if value is None:
         return False
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        try:
+            value = bytes(value).decode("utf-8")
+        except UnicodeDecodeError:
+            return bool(value)
     if isinstance(value, str):
         normalized = value.strip().casefold()
         if normalized in {"", "0", "false", "no", "off"}:
