@@ -362,7 +362,11 @@ def state_db_text_value(value: object) -> str:
 def state_db_sort_key(path: Path) -> tuple[int, float, str]:
     match = re.fullmatch(r"state_(\d+)\.sqlite", path.name)
     version = int(match.group(1)) if match else -1
-    return (version, path.stat().st_mtime, path.name)
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        mtime = -1.0
+    return (version, mtime, path.name)
 
 
 def state_db_thread_columns(con: sqlite3.Connection) -> set[str]:

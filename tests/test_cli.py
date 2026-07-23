@@ -387,6 +387,44 @@ class CliTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], ["019f-test-empty-db"])
         self.assertEqual(rows[0]["title"], "Session hidden by empty db")
 
+    def test_list_uses_session_files_when_state_db_symlink_is_broken(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            write_cli_session(
+                home,
+                "019f-test-broken-state-link",
+                cwd="/tmp/project",
+                user_message="Session hidden by broken state db symlink",
+            )
+            try:
+                os.symlink(home / "missing.sqlite", home / "state_999.sqlite")
+            except (AttributeError, NotImplementedError, OSError) as exc:
+                self.skipTest(f"symlink unavailable: {exc}")
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "codex_tui",
+                    "list",
+                    "--json",
+                    "-q",
+                    "Session hidden by broken state db symlink",
+                ],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-broken-state-link"])
+
     def test_list_merges_newer_unindexed_session_file_with_readable_sqlite_history(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
