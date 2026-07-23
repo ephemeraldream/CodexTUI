@@ -43,7 +43,7 @@ try:
     from rich.panel import Panel
     from rich.syntax import Syntax
     from rich.text import Text
-    from textual.app import App, ComposeResult
+    from textual.app import App, ComposeResult, ScreenStackError
     from textual.binding import Binding
     from textual.containers import Horizontal, Vertical
     from textual.events import Key, Paste
@@ -618,9 +618,14 @@ if TEXTUAL_IMPORT_ERROR is None:
             if self.entries:
                 selected = selection_index_for_entry(self.entries, selected_id)
                 list_view.index = selected
-                if self.current_thread is None and not self.new_dialog_active:
-                    self.current_thread = self.entries[selected].thread
-                    self.render_conversation(self.current_thread)
+                selected_thread = self.entries[selected].thread
+                if not self.new_dialog_active and (
+                    self.current_thread is None or self.current_thread.id != selected_thread.id
+                ):
+                    self.current_thread = selected_thread
+                    self.render_conversation(selected_thread)
+            elif not self.new_dialog_active:
+                self.clear_conversation_for_empty_history()
             self.set_status("No dialogs found." if not self.entries else f"{len(self.entries)} dialogs loaded.")
 
         def on_input_changed(self, event: Input.Changed) -> None:
@@ -649,12 +654,18 @@ if TEXTUAL_IMPORT_ERROR is None:
         def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
             if event.list_view.id == "transcript":
                 return
-            if getattr(self.focused, "id", "") != "thread-list":
+            try:
+                focused_id = getattr(self.focused, "id", "")
+            except ScreenStackError:
+                return
+            if focused_id != "thread-list":
                 return
             if event.item is None:
                 return
             entry = getattr(event.item, "history_entry", None)
             if isinstance(entry, HistoryEntry):
+                if not any(candidate.thread.id == entry.thread.id for candidate in self.entries):
+                    return
                 self.open_entry(entry, focus_transcript=False)
 
         def on_key(self, event: Key) -> None:
@@ -796,6 +807,28 @@ if TEXTUAL_IMPORT_ERROR is None:
                 return
             self.render_transcript_blocks(preserve_index=False)
             self.set_status(f"Opened {short_id(thread.id)}. Type below to continue.")
+
+        def clear_conversation_for_empty_history(self) -> None:
+            self.current_thread = None
+            self.current_session_info = default_session_info()
+            self.expanded_block_ids.clear()
+            title = "No matching dialogs" if self.query.strip() else "No Codex dialogs"
+            text = (
+                "No Codex dialogs match the current search."
+                if self.query.strip()
+                else "No Codex dialogs found."
+            )
+            self.query_one("#conversation-title", Static).update(title)
+            self.transcript_blocks = [
+                TranscriptBlock(
+                    id="empty-history",
+                    kind="status",
+                    title="Empty",
+                    subtitle="",
+                    text=text,
+                )
+            ]
+            self.render_transcript_blocks(preserve_index=False)
 
         def submit_composer(self, prompt: str) -> bool:
             parsed = parse_composer_payload(prompt)

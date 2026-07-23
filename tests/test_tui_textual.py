@@ -338,6 +338,77 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_history_filter_opens_first_match_when_selection_is_filtered_out(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                first = thread_with_messages(root, "019f-first-filter", "cli", ["First question"], ["First answer"])
+                second = thread_with_messages(root, "019f-second-filter", "cli", ["Second question"], ["Second answer"])
+                app = tui_textual.CodexTextualApp(lambda: [first, second])
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.pause()
+                    self.assertEqual(app.current_thread.id, "019f-first-filter")
+
+                    app.query = "Second"
+                    app.refresh_history()
+                    await pilot.pause()
+
+                    title = str(app.query_one("#conversation-title", tui_textual.Static).render())
+                    rendered_blocks = "\n".join(block.text for block in app.transcript_blocks)
+                    self.assertEqual([entry.thread.id for entry in app.entries], ["019f-second-filter"])
+                    self.assertEqual(app.current_thread.id, "019f-second-filter")
+                    self.assertIn("Second question", title)
+                    self.assertIn("Second answer", rendered_blocks)
+                    self.assertNotIn("First answer", rendered_blocks)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_history_filter_empty_clears_stale_conversation(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                thread = thread_with_messages(
+                    Path(temp_dir),
+                    "019f-empty-filter",
+                    "cli",
+                    ["Visible question"],
+                    ["Visible answer"],
+                )
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.pause()
+                    self.assertEqual(app.current_thread.id, "019f-empty-filter")
+
+                    app.query = "does-not-match"
+                    app.refresh_history()
+                    await pilot.pause()
+
+                    title = str(app.query_one("#conversation-title", tui_textual.Static).render())
+                    status = str(app.query_one("#status-line", tui_textual.Static).render())
+                    rendered_blocks = "\n".join(block.text for block in app.transcript_blocks)
+                    self.assertEqual(app.entries, [])
+                    self.assertIsNone(app.current_thread)
+                    self.assertIn("No matching dialogs", title)
+                    self.assertIn("No Codex dialogs match the current search.", rendered_blocks)
+                    self.assertNotIn("Visible answer", rendered_blocks)
+                    self.assertIn("No dialogs found.", status)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_stale_history_highlight_after_shutdown_is_ignored(self) -> None:
+        class FakeListView:
+            id = "thread-list"
+
+        class FakeEvent:
+            list_view = FakeListView()
+            item = None
+
+        app = tui_textual.CodexTextualApp(lambda: [])
+
+        app.on_list_view_highlighted(FakeEvent())  # type: ignore[arg-type]
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_composer_paste_image_path_adds_pending_attachment(self) -> None:
         async def run_case() -> None:
             with tempfile.TemporaryDirectory() as temp_dir:
