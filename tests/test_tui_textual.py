@@ -963,6 +963,37 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_failed_new_stream_without_created_thread_keeps_live_transcript(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                existing = thread_with_messages(root, "019f-existing-dialog", "cli", ["Question"], ["Answer"])
+                app = tui_textual.CodexTextualApp(lambda: [existing])
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.press("n")
+                    await pilot.pause()
+                    app.run_worker = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+                    submitted = app.submit_composer("start a new one")
+                    app.append_stream_block("[task] Codex turn failed: unable to start")
+                    app.finish_new_stream(2)
+                    await pilot.pause()
+
+                    self.assertTrue(submitted)
+                    self.assertIsNone(app.current_thread)
+                    self.assertFalse(app.new_dialog_active)
+                    self.assertEqual(app.entries[0].thread.id, existing.id)
+                    rendered_lines = "\n".join(block.text for block in app.transcript_blocks)
+                    self.assertIn("start a new one", rendered_lines)
+                    self.assertIn("[task] Codex turn starting...", rendered_lines)
+                    self.assertIn("unable to start", rendered_lines)
+                    self.assertNotIn("Answer", rendered_lines)
+                    status = str(app.query_one("#status-line", tui_textual.Static).render())
+                    self.assertIn("Codex exited with status 2.", status)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_submit_uses_pending_clipboard_image_paths(self) -> None:
         async def run_case() -> None:
             with tempfile.TemporaryDirectory() as temp_dir:

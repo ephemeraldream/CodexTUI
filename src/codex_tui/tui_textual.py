@@ -925,7 +925,12 @@ if TEXTUAL_IMPORT_ERROR is None:
         def load_threads(self) -> None:
             self.threads = self.thread_loader()
 
-        def refresh_history(self) -> None:
+        def refresh_history(
+            self,
+            *,
+            open_visible_selection: bool = True,
+            update_status: bool = True,
+        ) -> None:
             selected_id = self.current_thread.id if self.current_thread else ""
             self.entries = build_history_entries(self.threads, mode=self.history_mode, query=self.query)
             mode_line = self.query_one("#mode-line", Static)
@@ -950,14 +955,14 @@ if TEXTUAL_IMPORT_ERROR is None:
                 selected = selection_index_for_entry(self.entries, selected_id)
                 list_view.index = selected
                 selected_thread = self.entries[selected].thread
-                if not self.new_dialog_active and (
+                if open_visible_selection and not self.new_dialog_active and (
                     self.current_thread is None or self.current_thread.id != selected_thread.id
                 ):
                     self.current_thread = selected_thread
                     self.render_conversation(selected_thread)
-            elif not self.new_dialog_active:
+            elif open_visible_selection and not self.new_dialog_active:
                 self.clear_conversation_for_empty_history()
-            if not self.new_dialog_active:
+            if update_status and not self.new_dialog_active:
                 self.set_status(
                     self.empty_history_status()
                     if not self.entries
@@ -1363,7 +1368,9 @@ if TEXTUAL_IMPORT_ERROR is None:
                 )
                 self.current_thread = refreshed
                 self.render_conversation(refreshed)
-            self.refresh_history()
+                self.refresh_history()
+            else:
+                self.refresh_history(open_visible_selection=False, update_status=False)
             status = "Codex finished." if code == 0 else f"Codex exited with status {code}."
             self.set_status(status)
 
@@ -1379,7 +1386,7 @@ if TEXTUAL_IMPORT_ERROR is None:
             ]
             if new_threads:
                 return max(new_threads, key=lambda thread: thread.recency_at_ms)
-            return self.threads[0] if self.threads else None
+            return None
 
         def set_status(self, text: str) -> None:
             self.status_text = text
