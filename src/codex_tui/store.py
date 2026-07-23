@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 import sqlite3
@@ -258,6 +259,19 @@ class CodexStore:
 def safe_ms(value: object) -> int:
     if value is None:
         return 0
+    if isinstance(value, str):
+        clean = value.strip()
+        if not clean:
+            return 0
+        try:
+            return int(clean)
+        except ValueError:
+            pass
+        try:
+            parsed = dt.datetime.fromisoformat(clean.replace("Z", "+00:00"))
+        except ValueError:
+            return 0
+        return int(parsed.timestamp() * 1000)
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -323,26 +337,44 @@ def select_int_column(columns: set[str], column: str) -> str:
 
 def select_timestamp_ms_column(columns: set[str], ms_column: str, seconds_column: str) -> str:
     if ms_column in columns:
-        return ms_column
+        return normalize_state_timestamp_sql(ms_column, ms_column, "ms")
     if seconds_column in columns:
-        return f"({seconds_column} * 1000) AS {ms_column}"
+        return normalize_state_timestamp_sql(seconds_column, ms_column, "seconds")
     return f"0 AS {ms_column}"
 
 
 def select_recency_at_ms_column(columns: set[str]) -> str:
     if "recency_at_ms" in columns:
-        return "recency_at_ms"
+        return normalize_state_timestamp_sql("recency_at_ms", "recency_at_ms", "ms")
     if "recency_at" in columns:
-        return "(recency_at * 1000) AS recency_at_ms"
+        return normalize_state_timestamp_sql("recency_at", "recency_at_ms", "seconds")
     if "updated_at_ms" in columns:
-        return "updated_at_ms AS recency_at_ms"
+        return normalize_state_timestamp_sql("updated_at_ms", "recency_at_ms", "ms")
     if "updated_at" in columns:
-        return "(updated_at * 1000) AS recency_at_ms"
+        return normalize_state_timestamp_sql("updated_at", "recency_at_ms", "seconds")
     if "created_at_ms" in columns:
-        return "created_at_ms AS recency_at_ms"
+        return normalize_state_timestamp_sql("created_at_ms", "recency_at_ms", "ms")
     if "created_at" in columns:
-        return "(created_at * 1000) AS recency_at_ms"
+        return normalize_state_timestamp_sql("created_at", "recency_at_ms", "seconds")
     return "0 AS recency_at_ms"
+
+
+def normalize_state_timestamp_sql(column: str, alias: str, numeric_unit: str) -> str:
+    numeric_expr = f"CAST({column} AS INTEGER)"
+    if numeric_unit == "seconds":
+        numeric_expr = f"({numeric_expr} * 1000)"
+    text_value = f"trim(CAST({column} AS TEXT))"
+    digits = f"({text_value} GLOB '[0-9]*' AND {text_value} NOT GLOB '*[^0-9]*')"
+    parsed_iso = f"CAST(strftime('%s', {column}) AS INTEGER) * 1000"
+    return f"""
+        CASE
+            WHEN {column} IS NULL THEN 0
+            WHEN typeof({column}) IN ('integer', 'real') THEN {numeric_expr}
+            WHEN {digits} THEN {numeric_expr}
+            WHEN strftime('%s', {column}) IS NOT NULL THEN {parsed_iso}
+            ELSE 0
+        END AS {alias}
+    """
 
 
 def state_db_unarchived_clause() -> str:
