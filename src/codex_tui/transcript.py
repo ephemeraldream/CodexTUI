@@ -119,7 +119,11 @@ def text_from_payload(payload: dict[str, object]) -> str:
 
 def looks_like_bootstrap_context(text: str) -> bool:
     stripped = text.lstrip()
-    return stripped.startswith("# AGENTS.md instructions") or "<environment_context>" in stripped
+    return (
+        stripped.startswith("# AGENTS.md instructions")
+        or stripped.startswith("<turn_aborted>")
+        or "<environment_context>" in stripped
+    )
 
 
 def looks_like_autonomous_status_update(text: str, phase: str) -> bool:

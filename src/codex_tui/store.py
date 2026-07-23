@@ -43,10 +43,6 @@ class CodexStore:
         if source:
             clauses.append("source = ?")
             params.append(source)
-        if query:
-            like = f"%{query}%"
-            clauses.append("(title LIKE ? OR preview LIKE ? OR first_user_message LIKE ? OR cwd LIKE ? OR id LIKE ?)")
-            params.extend([like, like, like, like, like])
         where = "WHERE " + " AND ".join(clauses) if clauses else ""
         sql = f"""
             SELECT id, title, cwd, source, archived, rollout_path, created_at_ms,
@@ -65,22 +61,7 @@ class CodexStore:
             return self.scan_threads_from_files(**fallback_kwargs)
         finally:
             con.close()
-        threads = [
-            ThreadRow(
-                id=str(row["id"] or ""),
-                title=clean_metadata_text(str(row["title"] or "")),
-                cwd=str(row["cwd"] or ""),
-                source=str(row["source"] or ""),
-                archived=bool(row["archived"]),
-                rollout_path=str(row["rollout_path"] or ""),
-                created_at_ms=safe_ms(row["created_at_ms"]),
-                updated_at_ms=safe_ms(row["updated_at_ms"]),
-                recency_at_ms=safe_ms(row["recency_at_ms"]),
-                preview=clean_metadata_text(str(row["preview"] or "")),
-                first_user_message=clean_metadata_text(str(row["first_user_message"] or "")),
-            )
-            for row in rows
-        ]
+        threads = [thread_from_state_row(row) for row in rows]
         if needs_python_filter:
             threads = [
                 thread
@@ -199,6 +180,33 @@ def safe_ms(value: object) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def thread_from_state_row(row: sqlite3.Row) -> ThreadRow:
+    rollout_path = str(row["rollout_path"] or "")
+    title = clean_metadata_text(str(row["title"] or ""))
+    preview = clean_metadata_text(str(row["preview"] or ""))
+    first = clean_metadata_text(str(row["first_user_message"] or ""))
+    if rollout_path and (not title or not first):
+        rollout_first = first_user_message(Path(rollout_path))
+        if rollout_first:
+            first = first or rollout_first
+            title = title or rollout_first
+    if not title:
+        title = preview or (Path(rollout_path).name if rollout_path else "")
+    return ThreadRow(
+        id=str(row["id"] or ""),
+        title=title,
+        cwd=str(row["cwd"] or ""),
+        source=str(row["source"] or ""),
+        archived=bool(row["archived"]),
+        rollout_path=rollout_path,
+        created_at_ms=safe_ms(row["created_at_ms"]),
+        updated_at_ms=safe_ms(row["updated_at_ms"]),
+        recency_at_ms=safe_ms(row["recency_at_ms"]),
+        preview=preview,
+        first_user_message=first,
+    )
 
 
 def read_session_meta(path: Path) -> dict[str, str]:

@@ -69,6 +69,38 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual(messages[0].text, "Show me the final answer")
         self.assertNotIn("hidden bootstrap", "\n".join(message.text for message in messages))
 
+    def test_internal_turn_abort_user_messages_are_hidden(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-abort", "cwd": "/tmp/project", "source": "cli"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "user_message",
+                        "message": (
+                            "<turn_aborted> The user interrupted the previous turn on purpose. "
+                            "Any running commands may still be running. </turn_aborted>"
+                        ),
+                        "images": [],
+                    },
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:02.000Z",
+                    "type": "event_msg",
+                    "payload": {"type": "user_message", "message": "Actual follow-up", "images": []},
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            messages = read_messages(path)
+
+        self.assertEqual([message.text for message in messages], ["Actual follow-up"])
+
     def test_autonomous_objective_wrapper_collapses_to_objective(self) -> None:
         prompt = autonomous_prompt("Ship a keyboard-only CLI wrapper.")
         with tempfile.TemporaryDirectory() as temp_dir:

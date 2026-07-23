@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -309,6 +310,53 @@ class CliTests(unittest.TestCase):
         self.assertIn("Project session", result.stdout)
         self.assertNotIn("Other session", result.stdout)
 
+    def test_list_enriches_blank_sqlite_metadata_from_rollout_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            rollout = write_cli_session(
+                home,
+                "019f-test-blank-title",
+                cwd="/tmp/project",
+                user_message="Recovered first prompt",
+            )
+            write_threads_db_row(
+                home,
+                session_id="019f-test-blank-title",
+                cwd="/tmp/project",
+                source="cli",
+                rollout_path=str(rollout),
+                title="",
+                preview="",
+                first_user_message="",
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            list_result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            query_result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json", "-q", "Recovered"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(list_result.returncode, 0)
+        rows = [json.loads(line) for line in list_result.stdout.splitlines()]
+        self.assertEqual(rows[0]["title"], "Recovered first prompt")
+        self.assertEqual(query_result.returncode, 0)
+        query_rows = [json.loads(line) for line in query_result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in query_rows], ["019f-test-blank-title"])
+
     def test_single_session_commands_here_resolve_last_in_current_git_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -517,6 +565,60 @@ def write_cli_session(home: Path, session_id: str, *, cwd: str, user_message: st
     ]
     path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
     return path
+
+
+def write_threads_db_row(
+    home: Path,
+    *,
+    session_id: str,
+    cwd: str,
+    source: str,
+    rollout_path: str,
+    title: str,
+    preview: str,
+    first_user_message: str,
+) -> None:
+    db_path = home / "state_5.sqlite"
+    con = sqlite3.connect(db_path)
+    try:
+        con.execute(
+            """
+            CREATE TABLE threads (
+                id TEXT,
+                title TEXT,
+                cwd TEXT,
+                source TEXT,
+                archived INTEGER,
+                rollout_path TEXT,
+                created_at_ms INTEGER,
+                updated_at_ms INTEGER,
+                recency_at_ms INTEGER,
+                preview TEXT,
+                first_user_message TEXT
+            )
+            """
+        )
+        con.execute(
+            """
+            INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                title,
+                cwd,
+                source,
+                0,
+                rollout_path,
+                1783677600000,
+                1783677605000,
+                1783677605000,
+                preview,
+                first_user_message,
+            ),
+        )
+        con.commit()
+    finally:
+        con.close()
 
 
 def write_autonomous_status_session(home: Path) -> Path:
