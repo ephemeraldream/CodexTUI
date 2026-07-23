@@ -14,6 +14,7 @@ from codex_tui.transcript_blocks import (
     patch_paths,
     session_footer_text,
     session_info_for_thread,
+    session_info_from_rollout,
     session_info_from_record,
     transcript_blocks_for_thread,
 )
@@ -110,6 +111,32 @@ class TranscriptBlockTests(unittest.TestCase):
         self.assertIn("line 7", folded.text)
         self.assertNotIn("line 29", folded.text)
         self.assertIn("line 29", folded.detail_text)
+
+    def test_corrupt_rollout_returns_empty_blocks_and_session_info(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            rollout = root / "rollout.jsonl"
+            records = [
+                session_meta("019f-corrupt"),
+                apply_patch_call(
+                    "2026-07-10T12:00:02.000Z",
+                    "*** Begin Patch\n*** Update File: src/app.py\n@@\n-old\n+new\n*** End Patch\n",
+                ),
+                {
+                    "timestamp": "2026-07-10T12:00:03.000Z",
+                    "type": "response_item",
+                    "payload": {"type": "message", "role": "assistant", "model": "gpt-5.5", "content": []},
+                },
+            ]
+            valid_prefix = "\n".join(json.dumps(record) for record in records) + "\n"
+            rollout.write_bytes(valid_prefix.encode("utf-8") + b"\xff\n")
+            thread = thread_for_rollout(rollout)
+
+            blocks = transcript_blocks_for_thread(thread)
+            info = session_info_from_rollout(rollout)
+
+        self.assertEqual(blocks, [])
+        self.assertEqual(info, SessionInfo())
 
     def test_session_info_reads_model_and_context(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

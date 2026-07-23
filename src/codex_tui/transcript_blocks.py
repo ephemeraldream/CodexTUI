@@ -120,19 +120,20 @@ def tool_output_blocks(path: Path, *, start: int = 1) -> list[TranscriptBlock]:
     return blocks
 
 
-def rollout_records(path: Path) -> Iterable[dict[str, object]]:
+def rollout_records(path: Path) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
     try:
-        handle = path.open("r", encoding="utf-8")
-    except OSError:
-        return
-    with handle:
-        for line in handle:
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(record, dict):
-                yield record
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(record, dict):
+                    records.append(record)
+    except (OSError, UnicodeDecodeError, ValueError):
+        return []
+    return records
 
 
 def tool_payloads(record: dict[str, object]) -> Iterable[dict[str, object]]:
@@ -184,24 +185,13 @@ def tool_output_block(
 
 
 def apply_patch_calls(path: Path) -> Iterable[tuple[str, str]]:
-    try:
-        handle = path.open("r", encoding="utf-8")
-    except OSError:
-        return
-    with handle:
-        for line in handle:
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
+    for record in rollout_records(path):
+        for payload in tool_payloads(record):
+            if payload.get("type") != "custom_tool_call" or payload.get("name") != "apply_patch":
                 continue
-            if not isinstance(record, dict):
-                continue
-            for payload in tool_payloads(record):
-                if payload.get("type") != "custom_tool_call" or payload.get("name") != "apply_patch":
-                    continue
-                patch_text = str(payload.get("input") or "")
-                if patch_text:
-                    yield str(record.get("timestamp") or ""), patch_text
+            patch_text = str(payload.get("input") or "")
+            if patch_text:
+                yield str(record.get("timestamp") or ""), patch_text
 
 
 def patch_paths(patch_text: str) -> list[str]:
@@ -258,19 +248,8 @@ def default_session_info() -> SessionInfo:
 
 def session_info_from_rollout(path: Path) -> SessionInfo:
     info = SessionInfo()
-    try:
-        handle = path.open("r", encoding="utf-8")
-    except OSError:
-        return SessionInfo()
-    with handle:
-        for line in handle:
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(record, dict):
-                continue
-            info = session_info_from_record(record, current=info)
+    for record in rollout_records(path):
+        info = session_info_from_record(record, current=info)
     return info
 
 
