@@ -23,24 +23,19 @@ class CodexStore:
         source: str | None = None,
         cwd: str | None = None,
     ) -> list[ThreadRow]:
+        fallback_kwargs = {
+            "include_archived": include_archived,
+            "limit": limit,
+            "query": query,
+            "source": source,
+            "cwd": cwd,
+        }
         db_path = self.state_db_path()
         if db_path is None:
-            return self.scan_threads_from_files(
-                include_archived=include_archived,
-                limit=limit,
-                query=query,
-                source=source,
-                cwd=cwd,
-            )
+            return self.scan_threads_from_files(**fallback_kwargs)
         con = self.open_state_db(db_path)
         if con is None:
-            return self.scan_threads_from_files(
-                include_archived=include_archived,
-                limit=limit,
-                query=query,
-                source=source,
-                cwd=cwd,
-            )
+            return self.scan_threads_from_files(**fallback_kwargs)
         clauses: list[str] = []
         params: list[object] = []
         if not include_archived:
@@ -66,6 +61,8 @@ class CodexStore:
             params.append(limit)
         try:
             rows = con.execute(sql, params).fetchall()
+        except sqlite3.Error:
+            return self.scan_threads_from_files(**fallback_kwargs)
         finally:
             con.close()
         threads = [

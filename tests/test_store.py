@@ -29,6 +29,30 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(threads[0].cwd, "/tmp/project")
         self.assertEqual(threads[0].source, "cli")
 
+    def test_sqlite_schema_error_falls_back_to_session_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            db_path = home / "state_5.sqlite"
+            con = sqlite3.connect(db_path)
+            try:
+                con.execute("CREATE TABLE unrelated (id TEXT)")
+                con.commit()
+            finally:
+                con.close()
+            write_session(
+                home,
+                "sessions",
+                "019f-test-basic",
+                cwd="/tmp/project",
+                source="cli",
+                user_message="Fallback session",
+            )
+
+            threads = CodexStore(home).load_threads()
+
+        self.assertEqual([thread.id for thread in threads], ["019f-test-basic"])
+        self.assertEqual(threads[0].first_user_message, "Fallback session")
+
     def test_scan_threads_from_files_applies_filters_before_limit(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
