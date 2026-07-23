@@ -124,6 +124,37 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual(messages[0].text, "Ship a keyboard-only CLI wrapper.")
         self.assertNotIn("This is iteration", messages[0].text)
 
+    def test_user_messages_include_image_attachment_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-images", "cwd": "/tmp/project", "source": "cli"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "user_message",
+                        "message": "Describe this screen",
+                        "images": [
+                            "/tmp/project/screen.png",
+                            {"url": "file:///tmp/project/reference%20view.jpg"},
+                            {"source": "data:image/png;base64,abc"},
+                        ],
+                    },
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            messages = read_messages(path)
+
+        self.assertEqual(
+            messages[0].text,
+            "Describe this screen\n\n[Image 1] screen.png\n[Image 2] reference view.jpg\n[Image 3]",
+        )
+
     def test_autonomous_status_updates_are_hidden_but_final_json_remains(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "rollout.jsonl"

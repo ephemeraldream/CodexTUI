@@ -8,10 +8,9 @@ from pathlib import Path
 from typing import Callable, Iterable, TextIO
 
 from .transcript import (
-    clean_user_text,
     looks_like_autonomous_status_update,
-    looks_like_bootstrap_context,
     text_from_payload,
+    user_text_from_payload,
 )
 
 
@@ -312,10 +311,10 @@ def text_from_event_payload(
 
 
 def render_user_message(payload: dict[str, object]) -> str | None:
-    text = text_from_payload(payload)
-    if not text or looks_like_bootstrap_context(text):
+    text = user_text_from_payload(payload)
+    if not text:
         return None
-    return f"YOU\n  {compact_value(clean_user_text(text), limit=800)}"
+    return f"YOU\n  {compact_value(text, limit=800)}"
 
 
 def render_assistant_message(text: str, phase: str) -> str:

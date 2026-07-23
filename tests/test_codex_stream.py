@@ -534,6 +534,21 @@ class CodexStreamTests(unittest.TestCase):
 
         self.assertEqual(text_from_json_line(line), "YOU\n  Fix the failing test.")
 
+    def test_renderer_streams_user_message_image_labels(self) -> None:
+        line = json_line(
+            "event_msg",
+            {
+                "type": "user_message",
+                "message": "Describe the UI",
+                "images": ["/tmp/project/screen.png"],
+            },
+        )
+
+        self.assertEqual(
+            text_from_json_line(line),
+            "YOU\n  Describe the UI [Image 1] screen.png",
+        )
+
     def test_renderer_cleans_autonomous_user_message_events(self) -> None:
         line = json_line(
             "event_msg",

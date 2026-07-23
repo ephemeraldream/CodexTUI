@@ -1052,6 +1052,76 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_successful_resume_with_persisted_image_history_keeps_image_marker(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                image_path = root / "screen.png"
+                image_path.write_bytes(b"png")
+                thread = thread_with_messages(root, "019f-resume-image", "cli", ["Question"], ["Original answer"])
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.press("enter")
+                    await pilot.pause()
+                    app.run_worker = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+                    submitted = app.submit_composer(f"/image {image_path} describe it")
+                    persisted_records = [
+                        {
+                            "timestamp": "2026-07-10T12:00:00.000Z",
+                            "type": "session_meta",
+                            "payload": {"id": thread.id, "cwd": "/tmp/project", "source": "cli"},
+                        },
+                        {
+                            "timestamp": "2026-07-10T12:00:01.000Z",
+                            "type": "event_msg",
+                            "payload": {"type": "user_message", "message": "Question", "images": []},
+                        },
+                        {
+                            "timestamp": "2026-07-10T12:00:02.000Z",
+                            "type": "event_msg",
+                            "payload": {
+                                "type": "agent_message",
+                                "phase": "final_answer",
+                                "message": "Original answer",
+                            },
+                        },
+                        {
+                            "timestamp": "2026-07-10T12:00:03.000Z",
+                            "type": "event_msg",
+                            "payload": {
+                                "type": "user_message",
+                                "message": "describe it",
+                                "images": [str(image_path)],
+                            },
+                        },
+                        {
+                            "timestamp": "2026-07-10T12:00:04.000Z",
+                            "type": "event_msg",
+                            "payload": {
+                                "type": "agent_message",
+                                "phase": "final_answer",
+                                "message": "Persisted image answer",
+                            },
+                        },
+                    ]
+                    Path(thread.rollout_path).write_text(
+                        "\n".join(json.dumps(record) for record in persisted_records) + "\n",
+                        encoding="utf-8",
+                    )
+                    app.finish_stream(thread.id, 0)
+                    await pilot.pause()
+
+                    self.assertTrue(submitted)
+                    rendered_lines = "\n".join(block.text for block in app.transcript_blocks)
+                    self.assertIn("[Image 1] screen.png", rendered_lines)
+                    self.assertIn("Persisted image answer", rendered_lines)
+                    status = str(app.query_one("#status-line", tui_textual.Static).render())
+                    self.assertIn("Codex finished.", status)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_successful_new_stream_with_stale_persisted_history_keeps_live_transcript(self) -> None:
         async def run_case() -> None:
             with tempfile.TemporaryDirectory() as temp_dir:
