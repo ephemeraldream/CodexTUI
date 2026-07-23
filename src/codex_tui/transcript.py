@@ -132,11 +132,26 @@ def user_text_from_payload(payload: dict[str, object]) -> str:
 
 
 def image_attachment_text(payload: dict[str, object]) -> str:
-    images = payload.get("images")
-    if not isinstance(images, list):
-        return ""
+    images = list(image_attachment_values(payload))
     labels = [image_attachment_label(image, index) for index, image in enumerate(images, start=1)]
     return "\n".join(label for label in labels if label)
+
+
+def image_attachment_values(payload: dict[str, object]) -> Iterable[object]:
+    images = payload.get("images")
+    if isinstance(images, list):
+        yield from images
+    content = payload.get("content")
+    if not isinstance(content, list):
+        return
+    for item in content:
+        if isinstance(item, dict) and content_item_is_image(item):
+            yield item
+
+
+def content_item_is_image(item: dict[str, object]) -> bool:
+    item_type = str(item.get("type") or "")
+    return item_type in {"input_image", "image", "image_url"} or "image_url" in item
 
 
 def image_attachment_label(image: object, index: int) -> str:
@@ -149,10 +164,14 @@ def image_attachment_name(image: object) -> str:
     if isinstance(image, str):
         return image_name_from_value(image)
     if isinstance(image, dict):
-        for key in ("path", "file", "filename", "name", "source", "url"):
+        for key in ("path", "file", "filename", "name", "source", "url", "image_url"):
             value = image.get(key)
             if isinstance(value, str):
                 name = image_name_from_value(value)
+                if name:
+                    return name
+            if isinstance(value, dict):
+                name = image_attachment_name(value)
                 if name:
                     return name
     return ""

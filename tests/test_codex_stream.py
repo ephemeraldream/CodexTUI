@@ -549,6 +549,24 @@ class CodexStreamTests(unittest.TestCase):
             "YOU\n  Describe the UI [Image 1] screen.png",
         )
 
+    def test_renderer_streams_user_message_content_array_image_labels(self) -> None:
+        line = json_line(
+            "response_item",
+            {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "Describe the UI"},
+                    {"type": "input_image", "image_url": "file:///tmp/project/main%20screen.png"},
+                ],
+            },
+        )
+
+        self.assertEqual(
+            text_from_json_line(line),
+            "YOU\n  Describe the UI [Image 1] main screen.png",
+        )
+
     def test_renderer_cleans_autonomous_user_message_events(self) -> None:
         line = json_line(
             "event_msg",

@@ -232,11 +232,15 @@ def text_from_stream_record(
     if record_type == "event_msg" and payload_type == "task_complete":
         text = str(payload.get("last_agent_message") or "")
         return render_assistant_message(text, "final_answer") if text else None
-    if record_type == "response_item" and payload_type == "message" and payload.get("role") == "assistant":
-        text = text_from_payload(payload)
-        phase = str(payload.get("phase") or "")
-        if text and not looks_like_autonomous_status_update(text, phase):
-            return render_assistant_message(text, phase)
+    if record_type == "response_item" and payload_type == "message":
+        role = str(payload.get("role") or "")
+        if role == "assistant":
+            text = text_from_payload(payload)
+            phase = str(payload.get("phase") or "")
+            if text and not looks_like_autonomous_status_update(text, phase):
+                return render_assistant_message(text, phase)
+        if role == "user":
+            return render_user_message(payload)
     if record_type == "response_item":
         return text_from_response_item(payload, call_labels=call_labels)
     return None

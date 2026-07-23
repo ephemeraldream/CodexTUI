@@ -155,6 +155,37 @@ class TranscriptTests(unittest.TestCase):
             "Describe this screen\n\n[Image 1] screen.png\n[Image 2] reference view.jpg\n[Image 3]",
         )
 
+    def test_user_message_content_array_input_images_are_labeled(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-content-images", "cwd": "/tmp/project", "source": "cli"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "Describe these screens"},
+                            {"type": "input_image", "image_url": "file:///tmp/project/main%20screen.png"},
+                            {"type": "input_image", "image_url": {"url": "/tmp/project/detail.jpg"}},
+                        ],
+                    },
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            messages = read_messages(path)
+
+        self.assertEqual(
+            messages[0].text,
+            "Describe these screens\n\n[Image 1] main screen.png\n[Image 2] detail.jpg",
+        )
+
     def test_autonomous_status_updates_are_hidden_but_final_json_remains(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "rollout.jsonl"
