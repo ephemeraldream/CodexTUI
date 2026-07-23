@@ -82,30 +82,36 @@ class CodexStore:
         con = self.open_state_db(db_path)
         if con is None:
             return None
-        clauses: list[str] = []
-        params: list[object] = []
-        if not include_archived:
-            clauses.append("archived = 0")
-        if source:
-            clauses.append("source = ?")
-            params.append(source)
-        where = "WHERE " + " AND ".join(clauses) if clauses else ""
-        base_sql = f"""
-            SELECT id, title, cwd, source, archived, rollout_path, created_at_ms,
-                   updated_at_ms, recency_at_ms, preview, first_user_message
-            FROM threads
-            {where}
-            ORDER BY recency_at_ms DESC, id DESC
-        """
-        needs_python_filter = bool(query or cwd)
-        use_sql_limit = limit is not None and limit >= 0 and not needs_python_filter
-        sql = base_sql
-        sql_params = list(params)
-        if use_sql_limit:
-            sql += " LIMIT ?"
-            sql_params.append(limit)
         reloaded_without_sql_limit = False
         try:
+            columns = state_db_thread_columns(con)
+            select_columns = state_db_thread_select_columns(columns)
+            if select_columns is None:
+                return None
+            clauses: list[str] = []
+            params: list[object] = []
+            if not include_archived and "archived" in columns:
+                clauses.append("archived = 0")
+            source_column = state_db_source_column(columns)
+            if source:
+                if source_column is None:
+                    return None
+                clauses.append(f"{source_column} = ?")
+                params.append(source)
+            where = "WHERE " + " AND ".join(clauses) if clauses else ""
+            base_sql = f"""
+                SELECT {", ".join(select_columns)}
+                FROM threads
+                {where}
+                ORDER BY recency_at_ms DESC, id DESC
+            """
+            needs_python_filter = bool(query or cwd)
+            use_sql_limit = limit is not None and limit >= 0 and not needs_python_filter
+            sql = base_sql
+            sql_params = list(params)
+            if use_sql_limit:
+                sql += " LIMIT ?"
+                sql_params.append(limit)
             rows = con.execute(sql, sql_params).fetchall()
             db_threads = [thread_from_state_row(row) for row in rows]
             if use_sql_limit and any(not thread_rollout_readable(thread) for thread in db_threads):
@@ -268,6 +274,81 @@ def state_db_sort_key(path: Path) -> tuple[int, float, str]:
     match = re.fullmatch(r"state_(\d+)\.sqlite", path.name)
     version = int(match.group(1)) if match else -1
     return (version, path.stat().st_mtime, path.name)
+
+
+def state_db_thread_columns(con: sqlite3.Connection) -> set[str]:
+    return {str(row["name"]) for row in con.execute("PRAGMA table_info(threads)").fetchall()}
+
+
+def state_db_thread_select_columns(columns: set[str]) -> list[str] | None:
+    if "id" not in columns:
+        return None
+    return [
+        "id",
+        select_text_column(columns, "title"),
+        select_text_column(columns, "cwd"),
+        select_source_column(columns),
+        select_int_column(columns, "archived"),
+        select_text_column(columns, "rollout_path"),
+        select_timestamp_ms_column(columns, "created_at_ms", "created_at"),
+        select_timestamp_ms_column(columns, "updated_at_ms", "updated_at"),
+        select_recency_at_ms_column(columns),
+        select_text_column(columns, "preview"),
+        select_text_column(columns, "first_user_message"),
+    ]
+
+
+def state_db_source_column(columns: set[str]) -> str | None:
+    if "source" in columns:
+        return "source"
+    if "thread_source" in columns:
+        return "thread_source"
+    return None
+
+
+def select_source_column(columns: set[str]) -> str:
+    column = state_db_source_column(columns)
+    if column is None:
+        return "'' AS source"
+    if column == "source":
+        return "source"
+    return f"{column} AS source"
+
+
+def select_text_column(columns: set[str], column: str) -> str:
+    if column in columns:
+        return column
+    return f"'' AS {column}"
+
+
+def select_int_column(columns: set[str], column: str) -> str:
+    if column in columns:
+        return column
+    return f"0 AS {column}"
+
+
+def select_timestamp_ms_column(columns: set[str], ms_column: str, seconds_column: str) -> str:
+    if ms_column in columns:
+        return ms_column
+    if seconds_column in columns:
+        return f"({seconds_column} * 1000) AS {ms_column}"
+    return f"0 AS {ms_column}"
+
+
+def select_recency_at_ms_column(columns: set[str]) -> str:
+    if "recency_at_ms" in columns:
+        return "recency_at_ms"
+    if "recency_at" in columns:
+        return "(recency_at * 1000) AS recency_at_ms"
+    if "updated_at_ms" in columns:
+        return "updated_at_ms AS recency_at_ms"
+    if "updated_at" in columns:
+        return "(updated_at * 1000) AS recency_at_ms"
+    if "created_at_ms" in columns:
+        return "created_at_ms AS recency_at_ms"
+    if "created_at" in columns:
+        return "(created_at * 1000) AS recency_at_ms"
+    return "0 AS recency_at_ms"
 
 
 def thread_from_state_row(row: sqlite3.Row) -> ThreadRow:

@@ -15,6 +15,7 @@ import path_bootstrap  # noqa: F401
 
 from codex_tui.cli import handle_session_selection, main
 from codex_tui.fzf import PickerSelection
+from codex_tui.transcript import format_ms
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -722,6 +723,45 @@ class CliTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], ["019f-test-readable-same-db"])
         self.assertEqual(rows[0]["title"], "Readable same database session")
 
+    def test_list_reads_legacy_state_database_without_metadata_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            legacy_rollout = home / "legacy-rollouts" / "legacy-state.jsonl"
+            legacy_updated_at = 1783677605
+            write_session_file(
+                legacy_rollout,
+                "019f-test-legacy-state",
+                cwd="/tmp/project",
+                user_message="Readable legacy state session",
+            )
+            write_legacy_threads_db_row(
+                home,
+                session_id="019f-test-legacy-state",
+                cwd="/tmp/project",
+                source="cli",
+                rollout_path=str(legacy_rollout),
+                title="",
+                updated_at=legacy_updated_at,
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-legacy-state"])
+        self.assertEqual(rows[0]["title"], "Readable legacy state session")
+        self.assertEqual(rows[0]["updated_at"], format_ms(legacy_updated_at * 1000))
+
     def test_single_session_commands_here_resolve_last_in_current_git_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1040,6 +1080,53 @@ def write_empty_threads_db(home: Path) -> None:
                 first_user_message TEXT
             )
             """
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def write_legacy_threads_db_row(
+    home: Path,
+    *,
+    session_id: str,
+    cwd: str,
+    source: str,
+    rollout_path: str,
+    title: str,
+    updated_at: int,
+) -> None:
+    db_path = home / "state_5.sqlite"
+    con = sqlite3.connect(db_path)
+    try:
+        con.execute(
+            """
+            CREATE TABLE threads (
+                id TEXT,
+                title TEXT,
+                cwd TEXT,
+                source TEXT,
+                archived INTEGER,
+                rollout_path TEXT,
+                created_at INTEGER,
+                updated_at INTEGER
+            )
+            """
+        )
+        con.execute(
+            """
+            INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                title,
+                cwd,
+                source,
+                0,
+                rollout_path,
+                updated_at - 5,
+                updated_at,
+            ),
         )
         con.commit()
     finally:
