@@ -1208,7 +1208,7 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.render_transcript_blocks(preserve_index=False)
 
         def submit_composer(self, prompt: str) -> bool:
-            parsed = parse_composer_payload(prompt)
+            parsed = parse_composer_payload(prompt, cwd=self.composer_cwd())
             payload = ComposerPayload(parsed.prompt, tuple([*self.pending_image_paths, *parsed.image_paths]))
             if not payload.prompt:
                 if payload.image_paths:
@@ -1482,8 +1482,14 @@ if TEXTUAL_IMPORT_ERROR is None:
                 )
             )
 
+        def composer_cwd(self) -> Path:
+            thread = self.current_thread
+            if thread is not None and thread.cwd:
+                return Path(thread.cwd).expanduser()
+            return Path.cwd()
+
         def handle_composer_paste_text(self, text: str) -> bool:
-            image_paths = image_paths_from_paste_text(text)
+            image_paths = image_paths_from_paste_text(text, cwd=self.composer_cwd())
             if image_paths:
                 self.add_pending_image_paths(image_paths, source="Pasted")
                 return True

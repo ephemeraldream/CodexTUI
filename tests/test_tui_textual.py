@@ -737,6 +737,35 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_composer_paste_relative_image_path_uses_current_thread_cwd(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                project = root / "project"
+                project.mkdir()
+                image_path = project / "screen.png"
+                image_path.write_bytes(b"png")
+                thread = thread_with_messages(
+                    root,
+                    "019f-paste-image-cwd",
+                    "cli",
+                    ["Question"],
+                    ["Answer"],
+                    cwd=str(project),
+                )
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.pause()
+
+                    handled = app.handle_composer_paste_text("screen.png")
+                    await pilot.pause()
+
+                    self.assertTrue(handled)
+                    self.assertEqual(app.pending_image_paths, [str(image_path.resolve())])
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_composer_ctrl_v_captures_clipboard_image_before_text_paste(self) -> None:
         async def run_case() -> None:
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -953,6 +982,39 @@ class TextualTuiModelTests(unittest.TestCase):
                     self.assertIn("screen.png", rendered_lines)
                     status = str(app.query_one("#status-line", tui_textual.Static).render())
                     self.assertIn("with 1 image(s)", status)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_submit_relative_image_attachment_path_uses_current_thread_cwd(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                project = root / "project"
+                project.mkdir()
+                image_path = project / "screen.png"
+                image_path.write_bytes(b"png")
+                thread = thread_with_messages(
+                    root,
+                    "019f-image-cwd",
+                    "cli",
+                    ["Question"],
+                    ["Answer"],
+                    cwd=str(project),
+                )
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                calls: list[tuple[str, tuple[str, ...]]] = []
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.press("enter")
+                    await pilot.pause()
+                    app.resume_worker = lambda _thread, prompt, image_paths=(): calls.append((prompt, image_paths))  # type: ignore[method-assign]
+                    app.run_worker = lambda worker, *_args, **_kwargs: worker()  # type: ignore[method-assign]
+
+                    submitted = app.submit_composer("/image screen.png describe it")
+                    await pilot.pause()
+
+                    self.assertTrue(submitted)
+                    self.assertEqual(calls, [("describe it", (str(image_path.resolve()),))])
 
         asyncio.run(run_case())
 
@@ -1294,6 +1356,7 @@ def thread_with_messages(
     users: list[str],
     assistants: list[str],
     *,
+    cwd: str = "/tmp/project",
     extra_records: list[dict[str, object]] | None = None,
 ) -> ThreadRow:
     path = root / f"{thread_id}.jsonl"
@@ -1301,7 +1364,7 @@ def thread_with_messages(
         {
             "timestamp": "2026-07-10T12:00:00.000Z",
             "type": "session_meta",
-            "payload": {"id": thread_id, "cwd": "/tmp/project", "source": source},
+            "payload": {"id": thread_id, "cwd": cwd, "source": source},
         }
     ]
     index = 1
@@ -1328,7 +1391,7 @@ def thread_with_messages(
     return ThreadRow(
         id=thread_id,
         title=users[0],
-        cwd="/tmp/project",
+        cwd=cwd,
         source=source,
         archived=False,
         rollout_path=str(path),
