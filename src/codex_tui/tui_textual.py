@@ -522,6 +522,10 @@ def mode_line_text(mode: str, count: int, *, width: int | None = None) -> str:
     return truncate(variants[-1], width)
 
 
+def empty_history_title(query: str) -> str:
+    return "No matching dialogs" if query.strip() else "No Codex dialogs"
+
+
 def image_attachment_help_text(count: int) -> str:
     if count <= 0:
         return "Cmd/Ctrl+V img"
@@ -727,6 +731,11 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.update_composer_help()
             self.focus_history_list()
 
+        def _check_resize(self) -> None:
+            super()._check_resize()
+            if getattr(self, "_is_mounted", False):
+                self.call_after_refresh(self.refresh_width_sensitive_layout)
+
         def load_threads(self) -> None:
             self.threads = self.thread_loader()
 
@@ -763,6 +772,30 @@ if TEXTUAL_IMPORT_ERROR is None:
             elif not self.new_dialog_active:
                 self.clear_conversation_for_empty_history()
             self.set_status("No dialogs found." if not self.entries else f"{len(self.entries)} dialogs loaded.")
+
+        def refresh_width_sensitive_layout(self) -> None:
+            self.render_history_mode_line()
+            self.render_history_rows()
+            self.render_current_conversation_title()
+            self.update_composer_help()
+            self.render_status_line()
+
+        def render_history_mode_line(self) -> None:
+            self.query_one("#mode-line", Static).update(
+                mode_line_text(
+                    self.history_mode,
+                    len(self.entries),
+                    width=self.history_mode_content_width(),
+                )
+            )
+
+        def render_history_rows(self) -> None:
+            row_width = self.history_row_width()
+            list_view = self.query_one("#thread-list", ListView)
+            for item in list_view.children:
+                entry = getattr(item, "history_entry", None)
+                if isinstance(entry, HistoryEntry):
+                    item.query_one(Static).update(history_row_renderable(entry, row_width))
 
         def on_input_changed(self, event: Input.Changed) -> None:
             if event.input.id == "history-search":
@@ -957,7 +990,7 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.current_thread = None
             self.current_session_info = default_session_info()
             self.expanded_block_ids.clear()
-            title = "No matching dialogs" if self.query.strip() else "No Codex dialogs"
+            title = empty_history_title(self.query)
             text = (
                 "No Codex dialogs match the current search."
                 if self.query.strip()
@@ -1145,6 +1178,15 @@ if TEXTUAL_IMPORT_ERROR is None:
         def render_conversation_title(self, thread: ThreadRow) -> None:
             self.query_one("#conversation-title", Static).update(
                 conversation_title(thread, width=self.conversation_content_width())
+            )
+
+        def render_current_conversation_title(self) -> None:
+            if self.current_thread is not None:
+                self.render_conversation_title(self.current_thread)
+                return
+            title = "New Codex dialog" if self.new_dialog_active else empty_history_title(self.query)
+            self.query_one("#conversation-title", Static).update(
+                truncate(title, self.conversation_content_width())
             )
 
         def conversation_content_width(self) -> int:

@@ -221,6 +221,43 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_resize_reflows_width_sensitive_chrome_and_history_rows(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                thread = thread_with_messages(
+                    Path(temp_dir),
+                    "019f-resize-chrome",
+                    "cli",
+                    [
+                        "This is a very long conversation title that starts wide "
+                        "and must shrink when the terminal narrows"
+                    ],
+                    ["Answer"],
+                )
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                async with app.run_test(size=(140, 24)) as pilot:
+                    await pilot.pause()
+
+                    await pilot.resize_terminal(80, 24)
+                    await pilot.pause()
+
+                    content_width = app.conversation_content_width()
+                    title = str(app.query_one("#conversation-title", tui_textual.Static).render())
+                    help_text = str(app.query_one("#composer-help", tui_textual.Static).render())
+                    status = str(app.query_one("#status-line", tui_textual.Static).render())
+                    list_view = app.query_one("#thread-list", tui_textual.ListView)
+                    history_row = str(list_view.children[0].query_one(tui_textual.Static).render())
+
+                    self.assertLessEqual(len(title), content_width)
+                    self.assertLessEqual(len(help_text), content_width)
+                    self.assertLessEqual(len(status), content_width)
+                    self.assertIn("...", title)
+                    for line in history_row.splitlines():
+                        self.assertLessEqual(len(line), app.history_mode_content_width())
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_n_starts_new_dialog_and_focuses_composer(self) -> None:
         async def run_case() -> None:
             with tempfile.TemporaryDirectory() as temp_dir:
