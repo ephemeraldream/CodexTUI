@@ -22,7 +22,7 @@ def read_messages(path: Path) -> list[ChatMessage]:
     task_complete_message: ChatMessage | None = None
     try:
         handle = path.open("r", encoding="utf-8")
-    except OSError:
+    except (OSError, ValueError):
         return []
     with handle:
         for line in handle:

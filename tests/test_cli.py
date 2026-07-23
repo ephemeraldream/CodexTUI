@@ -1083,6 +1083,49 @@ class CliTests(unittest.TestCase):
         self.assertEqual(rows[0]["title"], "Readable blob path state session")
         self.assertEqual(rows[0]["rollout_path"], str(rollout))
 
+    def test_list_decodes_nul_padded_blob_sqlite_rollout_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            rollout = home / "legacy-rollouts" / "nul-padded-blob-path-state.jsonl"
+            write_session_file(
+                rollout,
+                "019f-test-nul-padded-blob-path-state",
+                cwd="/tmp/project",
+                user_message="NUL padded blob path state session",
+            )
+            write_blob_rollout_path_threads_db_row(
+                home,
+                session_id="",
+                rollout_path=str(rollout),
+                path_suffix=b"\x00",
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "codex_tui",
+                    "list",
+                    "--json",
+                    "-q",
+                    "NUL padded blob path state session",
+                ],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-nul-padded-blob-path-state"])
+        self.assertEqual(rows[0]["title"], "NUL padded blob path state session")
+        self.assertEqual(rows[0]["rollout_path"], str(rollout))
+
     def test_list_resolves_relative_sqlite_rollout_paths_from_codex_home(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
@@ -1992,6 +2035,7 @@ def write_blob_rollout_path_threads_db_row(
     *,
     session_id: str,
     rollout_path: str,
+    path_suffix: bytes = b"",
 ) -> None:
     db_path = home / "state_5.sqlite"
     con = sqlite3.connect(db_path)
@@ -2023,7 +2067,7 @@ def write_blob_rollout_path_threads_db_row(
                 "",
                 "",
                 0,
-                sqlite3.Binary(rollout_path.encode("utf-8")),
+                sqlite3.Binary(rollout_path.encode("utf-8") + path_suffix),
                 1783677600000,
                 1783677605000,
                 1783677605000,

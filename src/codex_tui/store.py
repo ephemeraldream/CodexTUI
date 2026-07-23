@@ -353,10 +353,10 @@ def state_db_text_value(value: object) -> str:
         if not raw_value:
             return ""
         try:
-            return raw_value.decode("utf-8")
+            return raw_value.decode("utf-8").rstrip("\x00")
         except UnicodeDecodeError:
             return ""
-    return str(value)
+    return str(value).rstrip("\x00")
 
 
 def state_db_sort_key(path: Path) -> tuple[int, float, str]:
@@ -563,7 +563,7 @@ def thread_rollout_readable(thread: ThreadRow) -> bool:
         return False
     try:
         return Path(thread.rollout_path).is_file()
-    except OSError:
+    except (OSError, ValueError):
         return False
 
 
@@ -601,7 +601,7 @@ def read_session_meta(path: Path) -> dict[str, str]:
                     continue
                 payload = record.get("payload") or {}
                 return {str(k): str(v) for k, v in payload.items() if isinstance(v, (str, int))}
-    except OSError:
+    except (OSError, ValueError):
         return {}
     return {}
 
