@@ -39,7 +39,7 @@ class CodexStreamRenderer:
         if stripped == "[task] Codex turn started.":
             self.seen_turn_messages.clear()
         if is_lifecycle_stream_block(stripped):
-            if stripped == self.last_lifecycle_text:
+            if is_redundant_lifecycle_stream_block(stripped, self.last_lifecycle_text):
                 return None
             self.last_lifecycle_text = stripped
         else:
@@ -56,11 +56,18 @@ def is_chat_stream_block(text: str) -> bool:
 
 
 def is_lifecycle_stream_block(text: str) -> bool:
+    if text.startswith("[context] compacted"):
+        return True
     return text in {
-        "[context] compacted",
         "[task] Codex turn completed.",
         "[task] Codex turn started.",
     }
+
+
+def is_redundant_lifecycle_stream_block(text: str, previous: str) -> bool:
+    if text == previous:
+        return True
+    return text == "[context] compacted" and previous.startswith("[context] compacted:")
 
 
 @dataclass(frozen=True)

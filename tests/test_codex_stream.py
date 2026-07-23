@@ -433,6 +433,25 @@ class CodexStreamTests(unittest.TestCase):
             text_from_json_line(line), "[context] compacted: older turns summarized"
         )
 
+    def test_renderer_suppresses_generic_compaction_after_detailed_compaction(self) -> None:
+        compacted_line = json.dumps(
+            {
+                "type": "compacted",
+                "payload": {
+                    "message": "older turns summarized",
+                    "replacement_history": [],
+                },
+            }
+        )
+        event_line = json_line("event_msg", {"type": "context_compacted"})
+        renderer = CodexStreamRenderer()
+
+        self.assertEqual(
+            renderer.render_line(compacted_line),
+            "[context] compacted: older turns summarized",
+        )
+        self.assertIsNone(renderer.render_line(event_line))
+
     def test_renderer_streams_token_count_status(self) -> None:
         line = json_line(
             "event_msg",
