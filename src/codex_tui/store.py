@@ -23,6 +23,8 @@ class CodexStore:
         source: str | None = None,
         cwd: str | None = None,
     ) -> list[ThreadRow]:
+        if limit == 0:
+            return []
         fallback_kwargs = {
             "include_archived": include_archived,
             "limit": limit,
@@ -61,6 +63,8 @@ class CodexStore:
             return self.scan_threads_from_files(**fallback_kwargs)
         finally:
             con.close()
+        if not rows:
+            return self.scan_threads_from_files(**fallback_kwargs)
         threads = [thread_from_state_row(row) for row in rows]
         if needs_python_filter:
             threads = [
@@ -135,6 +139,8 @@ class CodexStore:
         source: str | None = None,
         cwd: str | None = None,
     ) -> list[ThreadRow]:
+        if limit == 0:
+            return []
         roots = [self.home / "sessions"]
         if include_archived:
             roots.append(self.home / "archived_sessions")

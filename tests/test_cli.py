@@ -357,6 +357,34 @@ class CliTests(unittest.TestCase):
         query_rows = [json.loads(line) for line in query_result.stdout.splitlines()]
         self.assertEqual([row["id"] for row in query_rows], ["019f-test-blank-title"])
 
+    def test_list_falls_back_to_session_files_when_sqlite_threads_table_is_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            write_cli_session(
+                home,
+                "019f-test-empty-db",
+                cwd="/tmp/project",
+                user_message="Session hidden by empty db",
+            )
+            write_empty_threads_db(home)
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-empty-db"])
+        self.assertEqual(rows[0]["title"], "Session hidden by empty db")
+
     def test_single_session_commands_here_resolve_last_in_current_git_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -615,6 +643,32 @@ def write_threads_db_row(
                 preview,
                 first_user_message,
             ),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def write_empty_threads_db(home: Path) -> None:
+    db_path = home / "state_5.sqlite"
+    con = sqlite3.connect(db_path)
+    try:
+        con.execute(
+            """
+            CREATE TABLE threads (
+                id TEXT,
+                title TEXT,
+                cwd TEXT,
+                source TEXT,
+                archived INTEGER,
+                rollout_path TEXT,
+                created_at_ms INTEGER,
+                updated_at_ms INTEGER,
+                recency_at_ms INTEGER,
+                preview TEXT,
+                first_user_message TEXT
+            )
+            """
         )
         con.commit()
     finally:
