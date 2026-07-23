@@ -59,6 +59,31 @@ class TranscriptBlockTests(unittest.TestCase):
         self.assertEqual(change.file_changes[0].path, "src/app.py")
         self.assertIn("-old", change.file_changes[0].diff)
 
+    def test_transcript_blocks_include_top_level_apply_patch_item(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            rollout = root / "rollout.jsonl"
+            write_jsonl(
+                rollout,
+                [
+                    session_meta("019f-top-level-patch"),
+                    user_message("2026-07-10T12:00:01.000Z", "Fix it"),
+                    top_level_apply_patch_item(
+                        "2026-07-10T12:00:02.000Z",
+                        "*** Begin Patch\n*** Update File: src/app.py\n@@\n-old\n+new\n*** End Patch\n",
+                    ),
+                    assistant_message("2026-07-10T12:00:03.000Z", "Done."),
+                ],
+            )
+            thread = thread_for_rollout(rollout)
+
+            blocks = transcript_blocks_for_thread(thread)
+
+        self.assertEqual([block.kind for block in blocks], ["message", "file_change", "message"])
+        change = blocks[1]
+        self.assertEqual(change.text, "app.py")
+        self.assertEqual(change.file_changes[0].path, "src/app.py")
+
     def test_transcript_blocks_fold_large_tool_output_but_keep_detail(self) -> None:
         output = "\n".join(f"line {index}" for index in range(30))
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -181,6 +206,20 @@ def apply_patch_call(timestamp: str, patch: str) -> dict[str, object]:
         "timestamp": timestamp,
         "type": "response_item",
         "payload": {
+            "type": "custom_tool_call",
+            "status": "completed",
+            "call_id": "call_1",
+            "name": "apply_patch",
+            "input": patch,
+        },
+    }
+
+
+def top_level_apply_patch_item(timestamp: str, patch: str) -> dict[str, object]:
+    return {
+        "timestamp": timestamp,
+        "type": "item.completed",
+        "item": {
             "type": "custom_tool_call",
             "status": "completed",
             "call_id": "call_1",

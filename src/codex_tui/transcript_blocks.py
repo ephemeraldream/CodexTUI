@@ -194,14 +194,14 @@ def apply_patch_calls(path: Path) -> Iterable[tuple[str, str]]:
                 record = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            payload = record.get("payload") if isinstance(record, dict) else None
-            if not isinstance(payload, dict):
+            if not isinstance(record, dict):
                 continue
-            if payload.get("type") != "custom_tool_call" or payload.get("name") != "apply_patch":
-                continue
-            patch_text = str(payload.get("input") or "")
-            if patch_text:
-                yield str(record.get("timestamp") or ""), patch_text
+            for payload in tool_payloads(record):
+                if payload.get("type") != "custom_tool_call" or payload.get("name") != "apply_patch":
+                    continue
+                patch_text = str(payload.get("input") or "")
+                if patch_text:
+                    yield str(record.get("timestamp") or ""), patch_text
 
 
 def patch_paths(patch_text: str) -> list[str]:
