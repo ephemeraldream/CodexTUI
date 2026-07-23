@@ -364,8 +364,16 @@ def context_text(tokens: int | None, window: int | None) -> str:
         return f"?/{format_short_number(float(window))}"
     if window is None or window <= 0:
         return format_short_number(float(tokens))
-    percent = tokens / window * 100
-    return f"{format_short_number(float(tokens))}/{format_short_number(float(window))} {percent:.0f}%"
+    percent = context_percent_text(float(tokens), float(window))
+    return f"{format_short_number(float(tokens))}/{format_short_number(float(window))} {percent}"
+
+
+def context_percent_text(tokens: float, window: float) -> str:
+    if window <= 0:
+        return "?%"
+    if tokens > window:
+        return ">100%"
+    return f"{tokens / window * 100:.0f}%"
 
 
 def format_short_number(value: float) -> str:

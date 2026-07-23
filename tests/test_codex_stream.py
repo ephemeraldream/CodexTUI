@@ -455,6 +455,23 @@ class CodexStreamTests(unittest.TestCase):
             "[tokens] last 71.6k, session 231.5k, context 231.5k / 258.4k (89.6%), rate primary 6%/secondary 43.5%",
         )
 
+    def test_renderer_marks_context_overflow_without_inflated_percent(self) -> None:
+        line = json_line(
+            "event_msg",
+            {
+                "type": "token_count",
+                "info": {
+                    "total_token_usage": {"total_tokens": 1_040_000},
+                    "model_context_window": 258_400,
+                },
+            },
+        )
+
+        self.assertEqual(
+            text_from_json_line(line),
+            "[tokens] session 1m, context 1m / 258.4k (>100%)",
+        )
+
     def test_renderer_streams_token_count_limit_status(self) -> None:
         line = json_line(
             "event_msg",

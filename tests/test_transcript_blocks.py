@@ -152,6 +152,9 @@ class TranscriptBlockTests(unittest.TestCase):
         self.assertEqual(context_text(1000, None), "1k")
         self.assertEqual(context_text(None, 2000), "?/2k")
 
+    def test_context_text_marks_overflow_without_inflated_percent(self) -> None:
+        self.assertEqual(context_text(1_040_000, 258_400), "1m/258.4k >100%")
+
     def test_session_info_from_record_updates_existing_footer_state(self) -> None:
         current = SessionInfo(model="gpt-5.5", context_tokens=100, context_window=None)
         record = {

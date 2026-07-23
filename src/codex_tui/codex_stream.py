@@ -577,8 +577,8 @@ def render_token_count(payload: dict[str, object]) -> str:
             parts.append(f"session {format_number(session_total)}")
         context_window = number_value(info.get("model_context_window"))
         if session_total and context_window:
-            percent = session_total / context_window * 100
-            parts.append(f"context {format_number(session_total)} / {format_number(context_window)} ({format_percent(percent)})")
+            percent = format_context_percent(session_total, context_window)
+            parts.append(f"context {format_number(session_total)} / {format_number(context_window)} ({percent})")
         elif context_window:
             parts.append(f"context window {format_number(context_window)}")
     if isinstance(rate_limits, dict):
@@ -762,6 +762,14 @@ def format_number(value: float) -> str:
 
 def format_percent(value: float) -> str:
     return trim_decimal(value) + "%"
+
+
+def format_context_percent(tokens: float, window: float) -> str:
+    if window <= 0:
+        return "?%"
+    if tokens > window:
+        return ">100%"
+    return format_percent(tokens / window * 100)
 
 
 def trim_decimal(value: float) -> str:
