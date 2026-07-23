@@ -547,6 +547,7 @@ if TEXTUAL_IMPORT_ERROR is None:
             ("n", "new_dialog", "New"),
             ("r", "refresh", "Refresh"),
             ("i", "focus_composer", "Compose"),
+            ("c", "focus_composer", "Compose"),
             ("R", "official_resume", "Official resume"),
             Binding("cmd+v,super+v", "paste_clipboard_image", "Paste image", show=False),
         ]
@@ -982,7 +983,7 @@ if TEXTUAL_IMPORT_ERROR is None:
         def update_composer_help(self) -> None:
             history_hint = "b hide list" if self.history_visible else "b show list"
             image_hint = f"{self.image_attachment_chips()} | " if self.pending_image_paths else "Cmd/Ctrl+V img | "
-            text = f"n new | j/k blocks | Enter open | i chat | {image_hint}{history_hint} | Ctrl+j/k scroll | gg/G | R resume"
+            text = f"n new | j/k blocks | Enter open | i/c chat | {image_hint}{history_hint} | Ctrl+j/k scroll | gg/G | R resume"
             self.query_one("#composer-help", Static).update(text)
 
         def handle_composer_paste_text(self, text: str) -> bool:

@@ -181,7 +181,7 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
-    def test_i_focuses_composer_instead_of_c(self) -> None:
+    def test_i_and_c_focus_composer(self) -> None:
         async def run_case() -> None:
             with tempfile.TemporaryDirectory() as temp_dir:
                 thread = thread_with_messages(Path(temp_dir), "019f-compose", "cli", ["Question"], ["Answer"])
@@ -192,7 +192,9 @@ class TextualTuiModelTests(unittest.TestCase):
 
                     await pilot.press("c")
                     await pilot.pause()
-                    self.assertEqual(getattr(app.focused, "id", ""), "thread-list")
+                    self.assertEqual(getattr(app.focused, "id", ""), "composer")
+                    app.focus_history_list()
+                    await pilot.pause()
 
                     await pilot.press("i")
                     await pilot.pause()
