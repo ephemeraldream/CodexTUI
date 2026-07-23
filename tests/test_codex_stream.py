@@ -300,6 +300,28 @@ class CodexStreamTests(unittest.TestCase):
             renderer.render_line(rollback_line), "[thread] rolled back 1 turn."
         )
 
+    def test_renderer_streams_completed_reasoning_item_summary(self) -> None:
+        line = json_line(
+            "event_msg",
+            {
+                "type": "item_completed",
+                "item": {
+                    "type": "reasoning",
+                    "summary": [
+                        {
+                            "type": "summary_text",
+                            "text": "Checked the history fallback.",
+                        }
+                    ],
+                },
+            },
+        )
+
+        rendered = text_from_json_line(line)
+
+        self.assertEqual(rendered, "[reasoning] Checked the history fallback.")
+        self.assertNotIn("[item]", rendered or "")
+
     def test_renderer_summarizes_unknown_completed_item_without_raw_json(self) -> None:
         line = json_line(
             "event_msg",

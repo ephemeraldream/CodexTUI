@@ -234,8 +234,7 @@ def text_from_top_level_item(
     ):
         return render_user_message(item)
     if item_type == "reasoning":
-        summary = reasoning_summary_text(item.get("summary"))
-        return f"[reasoning] {summary}" if summary else None
+        return render_reasoning_item(item)
     if item_type in {"function_call", "custom_tool_call", "tool_search_call", "web_search_call"}:
         return text_from_response_item(item, call_labels=call_labels)
     if item_type in {"function_call_output", "custom_tool_call_output", "tool_search_output"}:
@@ -319,8 +318,7 @@ def text_from_response_item(
         action = compact_value(payload.get("action"))
         return f"[search] {action}" if action else "[search] started"
     if payload_type == "reasoning":
-        summary = reasoning_summary_text(payload.get("summary"))
-        return f"[reasoning] {summary}" if summary else None
+        return render_reasoning_item(payload)
     return None
 
 
@@ -425,6 +423,8 @@ def render_completed_item(payload: dict[str, object]) -> str:
     if not isinstance(item, dict):
         return "[item] completed"
     item_type = str(item.get("type") or "item").strip() or "item"
+    if item_type == "reasoning":
+        return render_reasoning_item(item) or "[reasoning] completed"
     prefix = "[plan]" if item_type.casefold() == "plan" else f"[item] {item_type}"
     text = str(item.get("text") or "").strip()
     if text:
@@ -500,6 +500,19 @@ def render_compacted_record(payload: dict[str, object]) -> str:
     if message:
         return f"[context] compacted: {message}"
     return "[context] compacted"
+
+
+def render_reasoning_item(payload: dict[str, object]) -> str | None:
+    summary = reasoning_summary_from_payload(payload)
+    return f"[reasoning] {summary}" if summary else None
+
+
+def reasoning_summary_from_payload(payload: dict[str, object]) -> str:
+    summary = reasoning_summary_text(payload.get("summary"))
+    if summary:
+        return summary
+    text = text_from_payload(payload)
+    return compact_value(text, limit=800) if text else ""
 
 
 def render_token_count(payload: dict[str, object]) -> str:
