@@ -39,6 +39,12 @@ class CodexStreamRenderer:
         return stripped
 
 
+@dataclass(frozen=True)
+class StreamToolOutputDetail:
+    rendered: str
+    detail_text: str
+
+
 def codex_exec_command(
     codex_bin: Path,
     *,
@@ -90,6 +96,46 @@ def stream_record_from_line(line: str) -> dict[str, object] | None:
     except json.JSONDecodeError:
         return None
     return record if isinstance(record, dict) else None
+
+
+def tool_output_detail_from_stream_record(
+    record: dict[str, object],
+    *,
+    call_labels: dict[str, str] | None = None,
+) -> StreamToolOutputDetail | None:
+    payload = function_tool_output_payload(record)
+    if payload is None:
+        text_from_stream_record(record, call_labels=call_labels)
+        return None
+    output = stringify_output(payload.get("output")).rstrip()
+    folded = folded_tool_output(output)
+    if not output or not folded:
+        return None
+    label = call_label(payload, call_labels)
+    prefix = f"[tool output] {label}" if label else "[tool output]"
+    detail_label = label or "tool"
+    return StreamToolOutputDetail(
+        rendered=f"{prefix}: {folded}",
+        detail_text=f"{detail_label}\n{output}",
+    )
+
+
+def function_tool_output_payload(record: dict[str, object]) -> dict[str, object] | None:
+    for payload in stream_payloads(record):
+        payload_type = payload.get("type")
+        if payload_type not in {"function_call_output", "custom_tool_call_output"}:
+            continue
+        return payload
+    return None
+
+
+def stream_payloads(record: dict[str, object]) -> Iterable[dict[str, object]]:
+    payload = record.get("payload")
+    if isinstance(payload, dict):
+        yield payload
+    item = record.get("item")
+    if isinstance(item, dict):
+        yield item
 
 
 def text_from_stream_record(

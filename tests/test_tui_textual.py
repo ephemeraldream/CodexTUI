@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import path_bootstrap  # noqa: F401
 
+from codex_tui.codex_stream import CodexStreamRenderer
 from codex_tui.models import ThreadRow
 from codex_tui import tui_textual
 from codex_tui.tui_textual import (
@@ -734,6 +735,71 @@ class TextualTuiModelTests(unittest.TestCase):
                     self.assertEqual(block.kind, "tool_output")
                     self.assertIn(block.id, app.expanded_block_ids)
                     self.assertIn("line 29", block.detail_text)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_live_folded_tool_output_keeps_full_detail_for_expansion(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                output = "\n".join(f"line {index}" for index in range(30))
+                thread = thread_with_messages(
+                    Path(temp_dir),
+                    "019f-live-tool-fold",
+                    "cli",
+                    ["Run tests"],
+                    ["Ready"],
+                )
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                renderer = CodexStreamRenderer()
+                call_record = {
+                    "timestamp": "2026-07-10T12:00:03.000Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "function_call",
+                        "status": "completed",
+                        "call_id": "call_1",
+                        "name": "exec_command",
+                        "arguments": json.dumps({"cmd": "pytest"}),
+                    },
+                }
+                output_record = {
+                    "timestamp": "2026-07-10T12:00:04.000Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "function_call_output",
+                        "call_id": "call_1",
+                        "output": output,
+                    },
+                }
+                rendered_call = renderer.render_line(json.dumps(call_record))
+                rendered_output = renderer.render_line(json.dumps(output_record))
+                assert rendered_call is not None
+                assert rendered_output is not None
+
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.press("enter")
+                    await pilot.pause()
+
+                    app.update_session_info_from_stream_record(call_record)
+                    app.append_stream_block(rendered_call)
+                    app.update_session_info_from_stream_record(output_record)
+                    app.append_stream_block(rendered_output)
+                    await pilot.pause()
+
+                    block = app.transcript_blocks[-1]
+                    self.assertEqual(block.kind, "tool_output")
+                    self.assertTrue(block.expandable)
+                    self.assertIn("line 7", block.text)
+                    self.assertNotIn("line 29", block.text)
+                    self.assertIn("line 29", block.detail_text)
+
+                    transcript = app.query_one("#transcript", tui_textual.ListView)
+                    transcript.index = len(app.transcript_blocks) - 1
+                    await pilot.press("t")
+                    await pilot.pause()
+
+                    self.assertIn(block.id, app.expanded_block_ids)
 
         asyncio.run(run_case())
 

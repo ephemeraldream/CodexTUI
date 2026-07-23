@@ -12,7 +12,11 @@ from pathlib import Path
 from typing import Callable, Iterable, TextIO
 from urllib.parse import unquote, urlparse
 
-from .codex_stream import codex_exec_command, run_codex_json_stream
+from .codex_stream import (
+    codex_exec_command,
+    run_codex_json_stream,
+    tool_output_detail_from_stream_record,
+)
 from .models import ChatMessage, ThreadRow
 from .paths import real_codex_bin
 from .store import CodexStore
@@ -574,6 +578,8 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.pending_gg = False
             self.pending_image_paths: list[str] = []
             self.search_timer: Timer | None = None
+            self.live_call_labels: dict[str, str] = {}
+            self.live_tool_output_details: dict[str, str] = {}
 
         def compose(self) -> ComposeResult:
             yield Header(show_clock=True)
@@ -871,6 +877,8 @@ if TEXTUAL_IMPORT_ERROR is None:
                 )
             )
             self.streaming = True
+            self.live_call_labels.clear()
+            self.live_tool_output_details.clear()
             suffix = f" with {len(payload.image_paths)} image(s)" if payload.image_paths else ""
             if thread is None:
                 self.new_dialog_active = True
@@ -937,7 +945,15 @@ if TEXTUAL_IMPORT_ERROR is None:
         def append_stream_block(self, block: str) -> None:
             if block.startswith("YOU\n"):
                 return
-            self.append_transcript_block(transcript_block_from_stream_block(block, self.next_live_block_id("stream")))
+            stripped = block.rstrip()
+            detail_text = self.live_tool_output_details.pop(stripped, "")
+            self.append_transcript_block(
+                transcript_block_from_stream_block(
+                    stripped,
+                    self.next_live_block_id("stream"),
+                    detail_text=detail_text,
+                )
+            )
 
         def finish_stream(self, thread_id: str, code: int) -> None:
             self.streaming = False
@@ -989,6 +1005,10 @@ if TEXTUAL_IMPORT_ERROR is None:
             thread_id = thread_id_from_stream_record(record)
             if thread_id:
                 self.live_thread_id = thread_id
+            if not self.raw_json:
+                detail = tool_output_detail_from_stream_record(record, call_labels=self.live_call_labels)
+                if detail is not None:
+                    self.live_tool_output_details[detail.rendered] = detail.detail_text
             self.current_session_info = session_info_from_record(record, current=self.current_session_info)
             self.render_status_line()
 
@@ -1231,7 +1251,12 @@ if TEXTUAL_IMPORT_ERROR is None:
         return summary
 
 
-    def transcript_block_from_stream_block(block: str, block_id: str) -> TranscriptBlock:
+    def transcript_block_from_stream_block(
+        block: str,
+        block_id: str,
+        *,
+        detail_text: str = "",
+    ) -> TranscriptBlock:
         message = chat_message_from_stream_block(block)
         if message is not None:
             return TranscriptBlock(
@@ -1244,17 +1269,23 @@ if TEXTUAL_IMPORT_ERROR is None:
                 phase=message.phase,
             )
         stripped = block.rstrip()
+        kind = kind_for_stream_block(stripped)
+        if detail_text:
+            kind = "tool_output"
         return TranscriptBlock(
             id=block_id,
-            kind=kind_for_stream_block(stripped),
+            kind=kind,
             title=title_for_stream_block(stripped),
             subtitle="live",
             text=stripped,
+            detail_text=detail_text,
         )
 
 
     def kind_for_stream_block(block: str) -> str:
         stripped = block.strip()
+        if stripped.startswith("[tool output]"):
+            return "tool_output"
         if stripped.startswith(("[tool]", "[tool output]", "[search]")):
             return "tool"
         return "status"
