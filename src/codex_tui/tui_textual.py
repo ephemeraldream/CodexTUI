@@ -536,6 +536,8 @@ def composer_help_text(
             variants.extend(
                 [
                     " | ".join(["n new", "j/k", "Enter/t", "i/c", image_hint, compact_history_hint, "R resume"]),
+                    " | ".join(["q", "n new", "j/k", "Enter/t", "i/c", image_hint, compact_history_hint, "R"]),
+                    " | ".join(["q", "n", "Enter/t", image_hint, compact_history_hint, "R"]),
                     " | ".join(["n", "Enter/t", image_hint, compact_history_hint, "R"]),
                 ]
             )
@@ -543,6 +545,8 @@ def composer_help_text(
             variants.extend(
                 [
                     " | ".join(["n new", "j/k", "Enter/t", "i/c", image_hint, history_hint, "R resume"]),
+                    " | ".join(["q", "n new", "j/k", "Enter/t", "i/c", image_hint, history_hint, "R"]),
+                    " | ".join(["q", "n", "Enter/t", image_hint, history_hint, "R"]),
                     " | ".join(["n", "Enter/t", image_hint, history_hint, "R"]),
                 ]
             )
@@ -552,6 +556,7 @@ def composer_help_text(
                 [
                     " | ".join(["n new", "j/k", "Enter/t", "i/c chat", history_hint, "R resume"]),
                     " | ".join(["n new", "j/k", "Enter/t", "i/c", compact_history_hint, "R resume"]),
+                    " | ".join(["q", "n", "j/k", "Enter/t", "i/c", compact_history_hint, "R"]),
                     " | ".join(["n", "j/k", "Enter/t", "i/c", compact_history_hint, "R"]),
                 ]
             )
@@ -559,6 +564,8 @@ def composer_help_text(
             variants.extend(
                 [
                     " | ".join(["n new", "j/k", "Enter/t", "i/c chat", history_hint, "R resume"]),
+                    " | ".join(["q", "n new", "j/k", "Enter/t", "i/c", history_hint, "R"]),
+                    " | ".join(["q", "n", "j/k", "Enter/t", "i/c", history_hint, "R"]),
                     " | ".join(["n new", "j/k", "Enter/t", "i/c", history_hint, "R"]),
                     " | ".join(["n", "j/k", "Enter/t", "i/c", compact_history_hint, "R"]),
                 ]
@@ -898,6 +905,7 @@ if TEXTUAL_IMPORT_ERROR is None:
         def on_mount(self) -> None:
             self.load_threads()
             self.refresh_history()
+            self.sync_footer_visibility()
             if self.size.width <= COMPACT_LAYOUT_MAX_WIDTH:
                 self.set_history_pane_visible(False, focus=False)
                 self.focus_transcript()
@@ -953,6 +961,7 @@ if TEXTUAL_IMPORT_ERROR is None:
                 )
 
         def refresh_width_sensitive_layout(self) -> None:
+            self.sync_footer_visibility()
             self.render_history_mode_line()
             self.render_history_rows()
             self.render_current_conversation_title()
@@ -1472,6 +1481,9 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.set_status("History pane hidden. Press b or F2 to show it.")
             if focus:
                 self.focus_transcript()
+
+        def sync_footer_visibility(self) -> None:
+            self.query_one(Footer).display = self.size.width > COMPACT_LAYOUT_MAX_WIDTH
 
         def update_composer_help(self) -> None:
             self.query_one("#composer-help", Static).update(

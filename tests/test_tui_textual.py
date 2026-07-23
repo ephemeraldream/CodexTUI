@@ -563,11 +563,14 @@ class TextualTuiModelTests(unittest.TestCase):
                     pane = app.query_one("#history-pane")
                     conversation = app.query_one("#conversation-pane")
                     help_text = str(app.query_one("#composer-help", tui_textual.Static).render())
+                    footer = app.query_one(tui_textual.Footer)
                     self.assertFalse(pane.display)
+                    self.assertFalse(footer.display)
                     self.assertEqual(str(pane.styles.width), "0")
                     self.assertGreaterEqual(conversation.region.width, 48)
                     self.assertEqual(getattr(app.focused, "id", ""), "transcript")
                     self.assertLessEqual(len(help_text), app.conversation_content_width())
+                    self.assertIn("q", help_text)
                     self.assertIn("b show list", help_text)
 
                     with patch.object(app, "exit") as exit_app:
@@ -576,6 +579,27 @@ class TextualTuiModelTests(unittest.TestCase):
 
                     exit_app.assert_called_once_with(0)
                     self.assertFalse(pane.display)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_footer_visibility_tracks_compact_resizes(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                thread = thread_with_messages(Path(temp_dir), "019f-footer-resize", "cli", ["Question"], ["Answer"])
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.pause()
+                    footer = app.query_one(tui_textual.Footer)
+                    self.assertTrue(footer.display)
+
+                    await pilot.resize_terminal(50, 24)
+                    await pilot.pause()
+                    self.assertFalse(footer.display)
+
+                    await pilot.resize_terminal(90, 24)
+                    await pilot.pause()
+                    self.assertTrue(footer.display)
 
         asyncio.run(run_case())
 
