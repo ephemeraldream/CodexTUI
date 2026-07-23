@@ -32,7 +32,8 @@ class CodexStore:
             "source": source,
             "cwd": cwd,
         }
-        for db_path in self.state_db_paths():
+        db_paths = self.state_db_paths()
+        for index, db_path in enumerate(db_paths):
             threads = self._load_threads_from_state_db(
                 db_path,
                 include_archived=include_archived,
@@ -42,6 +43,10 @@ class CodexStore:
                 cwd=cwd,
             )
             if threads is not None:
+                if index < len(db_paths) - 1 and all(
+                    not thread_rollout_readable(thread) for thread in threads
+                ):
+                    continue
                 return threads
         return self.scan_threads_from_files(**fallback_kwargs)
 

@@ -515,6 +515,56 @@ class CliTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], ["019f-test-state-six"])
         self.assertEqual(rows[0]["title"], "Newer state six session")
 
+    def test_list_skips_stale_newer_state_database_when_older_state_is_readable(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            legacy_rollout = home / "legacy-rollouts" / "state-five.jsonl"
+            write_session_file(
+                legacy_rollout,
+                "019f-test-readable-state-five",
+                cwd="/tmp/project",
+                user_message="Readable older state session",
+            )
+            write_threads_db_row(
+                home,
+                session_id="019f-test-stale-state-six",
+                cwd="/tmp/project",
+                source="cli",
+                rollout_path=str(home / "missing-rollout.jsonl"),
+                title="Stale newer state session",
+                preview="",
+                first_user_message="Stale newer state session",
+                db_name="state_6.sqlite",
+            )
+            write_threads_db_row(
+                home,
+                session_id="019f-test-readable-state-five",
+                cwd="/tmp/project",
+                source="cli",
+                rollout_path=str(legacy_rollout),
+                title="Readable older state session",
+                preview="",
+                first_user_message="Readable older state session",
+                db_name="state_5.sqlite",
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json", "--limit", "1"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-readable-state-five"])
+        self.assertEqual(rows[0]["title"], "Readable older state session")
+
     def test_single_session_commands_here_resolve_last_in_current_git_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -736,6 +786,12 @@ def write_cli_session(home: Path, session_id: str, *, cwd: str, user_message: st
     session_dir = home / "sessions" / "2026" / "07" / "10"
     session_dir.mkdir(parents=True, exist_ok=True)
     path = session_dir / f"rollout-2026-07-10T10-00-00-{session_id}.jsonl"
+    write_session_file(path, session_id, cwd=cwd, user_message=user_message)
+    return path
+
+
+def write_session_file(path: Path, session_id: str, *, cwd: str, user_message: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     records = [
         {
             "timestamp": "2026-07-10T10:00:00.000Z",
@@ -749,7 +805,6 @@ def write_cli_session(home: Path, session_id: str, *, cwd: str, user_message: st
         },
     ]
     path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
-    return path
 
 
 def write_threads_db_row(
