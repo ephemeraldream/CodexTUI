@@ -423,6 +423,43 @@ class CliTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], ["019f-test-readable-file"])
         self.assertEqual(rows[0]["title"], "Readable session file")
 
+    def test_list_uses_session_files_when_stale_sqlite_rows_are_filtered_out(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            write_cli_session(
+                home,
+                "019f-test-filtered-file",
+                cwd="/tmp/project",
+                user_message="Readable filtered session",
+            )
+            write_threads_db_row(
+                home,
+                session_id="019f-test-stale-row",
+                cwd="/tmp/other",
+                source="cli",
+                rollout_path=str(home / "missing-rollout.jsonl"),
+                title="Unrelated stale SQLite row",
+                preview="",
+                first_user_message="Unrelated stale SQLite row",
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json", "-q", "Readable filtered"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-filtered-file"])
+        self.assertEqual(rows[0]["title"], "Readable filtered session")
+
     def test_single_session_commands_here_resolve_last_in_current_git_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

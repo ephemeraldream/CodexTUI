@@ -65,7 +65,9 @@ class CodexStore:
             con.close()
         if not rows:
             return self.scan_threads_from_files(**fallback_kwargs)
-        threads = [thread_from_state_row(row) for row in rows]
+        db_threads = [thread_from_state_row(row) for row in rows]
+        db_has_unreadable_rollout = any(not thread_rollout_readable(thread) for thread in db_threads)
+        threads = db_threads
         if needs_python_filter:
             threads = [
                 thread
@@ -73,8 +75,7 @@ class CodexStore:
                 if thread_matches_filters(thread, query=query, source=None, cwd=cwd)
             ]
         merged_with_fallback = False
-        unreadable_rollout = any(not thread_rollout_readable(thread) for thread in threads)
-        if unreadable_rollout:
+        if db_has_unreadable_rollout:
             fallback_threads = self.scan_threads_from_files(
                 include_archived=include_archived,
                 limit=None,
