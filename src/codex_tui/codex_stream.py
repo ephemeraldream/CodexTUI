@@ -23,7 +23,8 @@ TOOL_OUTPUT_PREVIEW_CHARS = 1_200
 
 @dataclass
 class CodexStreamRenderer:
-    last_text: str = ""
+    seen_turn_messages: set[str] = field(default_factory=set)
+    last_lifecycle_text: str = ""
     call_labels: dict[str, str] = field(default_factory=dict)
 
     def render_line(self, line: str) -> str | None:
@@ -33,10 +34,33 @@ class CodexStreamRenderer:
         if text is None:
             return None
         stripped = text.rstrip()
-        if not stripped or stripped == self.last_text:
+        if not stripped:
             return None
-        self.last_text = stripped
+        if stripped == "[task] Codex turn started.":
+            self.seen_turn_messages.clear()
+        if is_lifecycle_stream_block(stripped):
+            if stripped == self.last_lifecycle_text:
+                return None
+            self.last_lifecycle_text = stripped
+        else:
+            self.last_lifecycle_text = ""
+        if is_chat_stream_block(stripped):
+            if stripped in self.seen_turn_messages:
+                return None
+            self.seen_turn_messages.add(stripped)
         return stripped
+
+
+def is_chat_stream_block(text: str) -> bool:
+    return text.startswith(("YOU\n", "CODEX\n", "CODEX final\n"))
+
+
+def is_lifecycle_stream_block(text: str) -> bool:
+    return text in {
+        "[context] compacted",
+        "[task] Codex turn completed.",
+        "[task] Codex turn started.",
+    }
 
 
 @dataclass(frozen=True)

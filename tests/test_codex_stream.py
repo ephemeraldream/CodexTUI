@@ -69,6 +69,43 @@ class CodexStreamTests(unittest.TestCase):
         self.assertIsNone(renderer.render_line(response_line))
         self.assertIsNone(renderer.render_line(task_complete_line))
 
+    def test_renderer_keeps_repeated_identical_tool_activity(self) -> None:
+        def tool_call_line(call_id: str) -> str:
+            return json_line(
+                "response_item",
+                {
+                    "type": "function_call",
+                    "status": "completed",
+                    "call_id": call_id,
+                    "name": "exec_command",
+                    "arguments": json.dumps({"cmd": "python3 -m unittest discover -s tests"}),
+                },
+            )
+
+        renderer = CodexStreamRenderer()
+        rendered = "[tool] exec_command: python3 -m unittest discover -s tests"
+
+        self.assertEqual(renderer.render_line(tool_call_line("call_1")), rendered)
+        self.assertEqual(renderer.render_line(tool_call_line("call_2")), rendered)
+
+    def test_renderer_allows_same_message_after_new_turn_starts(self) -> None:
+        message_line = json_line(
+            "event_msg",
+            {"type": "agent_message", "phase": "final_answer", "message": "Done."},
+        )
+        renderer = CodexStreamRenderer()
+
+        self.assertEqual(
+            renderer.render_line(json.dumps({"type": "turn.started"})),
+            "[task] Codex turn started.",
+        )
+        self.assertEqual(renderer.render_line(message_line), "CODEX final\n  Done.")
+        self.assertEqual(
+            renderer.render_line(json.dumps({"type": "turn.started"})),
+            "[task] Codex turn started.",
+        )
+        self.assertEqual(renderer.render_line(message_line), "CODEX final\n  Done.")
+
     def test_renderer_passes_non_json_stdout_through(self) -> None:
         renderer = CodexStreamRenderer()
 
