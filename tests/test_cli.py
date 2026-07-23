@@ -1017,6 +1017,41 @@ class CliTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], ["019f-test-blob-zero-archived"])
         self.assertEqual(rows[0]["archived"], False)
 
+    def test_list_normalizes_binary_zero_blob_archived_flag_from_state_database(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            rollout = home / "legacy-rollouts" / "binary-zero.jsonl"
+            write_session_file(
+                rollout,
+                "019f-test-binary-zero-archived",
+                cwd="/tmp/project",
+                user_message="Binary zero archived flag session",
+            )
+            write_blob_archived_threads_db_row(
+                home,
+                session_id="019f-test-binary-zero-archived",
+                rollout_path=str(rollout),
+                title="Binary zero archived flag session",
+                archived_value=b"\x00",
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-binary-zero-archived"])
+        self.assertEqual(rows[0]["archived"], False)
+
     def test_single_session_commands_here_resolve_last_in_current_git_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

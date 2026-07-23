@@ -380,6 +380,7 @@ def normalize_state_timestamp_sql(column: str, alias: str, numeric_unit: str) ->
 def state_db_unarchived_clause() -> str:
     archived_text = "lower(trim(CAST(archived AS TEXT)))"
     false_values = "'', '0', 'false', 'no', 'off'"
+    binary_zero = "(typeof(archived) = 'blob' AND replace(hex(archived), '00', '') = '')"
     numeric_zero_text = (
         f"({archived_text} GLOB '*0*' "
         f"AND {archived_text} NOT GLOB '*[^0-9.+-e]*' "
@@ -395,6 +396,7 @@ def state_db_unarchived_clause() -> str:
         "(archived IS NULL "
         "OR (typeof(archived) IN ('integer', 'real') AND CAST(archived AS REAL) = 0) "
         f"OR {archived_text} IN ({false_values}) "
+        f"OR {binary_zero} "
         f"OR {numeric_zero_text})"
     )
 
@@ -403,8 +405,11 @@ def state_db_archived_bool(value: object) -> bool:
     if value is None:
         return False
     if isinstance(value, (bytes, bytearray, memoryview)):
+        raw_value = bytes(value)
+        if not raw_value or all(byte == 0 for byte in raw_value):
+            return False
         try:
-            value = bytes(value).decode("utf-8")
+            value = raw_value.decode("utf-8")
         except UnicodeDecodeError:
             return bool(value)
     if isinstance(value, str):
