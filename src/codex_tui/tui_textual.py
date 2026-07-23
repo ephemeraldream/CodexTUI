@@ -60,6 +60,7 @@ else:
 
 
 HISTORY_MODES = ("conversations", "runs", "all")
+COMPACT_LAYOUT_MAX_WIDTH = 70
 MIN_HISTORY_ROW_WIDTH = 20
 MAX_HISTORY_ROW_WIDTH = 72
 TRANSCRIPT_SCROLL_KEYS = {"up", "down", "k", "j", "pageup", "pagedown", "home", "end", "G"}
@@ -600,6 +601,10 @@ if TEXTUAL_IMPORT_ERROR is None:
         def on_mount(self) -> None:
             self.load_threads()
             self.refresh_history()
+            if self.size.width <= COMPACT_LAYOUT_MAX_WIDTH:
+                self.set_history_pane_visible(False, focus=False)
+                self.focus_transcript()
+                return
             self.update_composer_help()
             self.focus_history_list()
 
@@ -777,7 +782,11 @@ if TEXTUAL_IMPORT_ERROR is None:
 
         def action_quit_or_back(self) -> None:
             focused = self.focused
-            if focused is not None and getattr(focused, "id", "") in {"composer", "history-search", "transcript"}:
+            focused_id = getattr(focused, "id", "") if focused is not None else ""
+            if focused_id == "transcript" and not self.history_visible:
+                self.exit(0)
+                return
+            if focused_id in {"composer", "history-search", "transcript"}:
                 self.focus_history_list()
                 return
             self.exit(0)
