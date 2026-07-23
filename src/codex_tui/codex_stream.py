@@ -5,7 +5,7 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TextIO
+from typing import Callable, Iterable, TextIO
 
 from .transcript import (
     clean_user_text,
@@ -44,12 +44,18 @@ def codex_exec_command(
     *,
     prompt: str | None,
     resume_id: str | None = None,
+    image_paths: Iterable[str | Path] = (),
 ) -> list[str]:
     command = [str(codex_bin), "exec"]
     if resume_id:
-        command.extend(["resume", "--json", resume_id])
+        command.extend(["resume", "--json"])
+        for image_path in image_paths:
+            command.extend(["--image", str(image_path)])
+        command.append(resume_id)
     else:
         command.append("--json")
+        for image_path in image_paths:
+            command.extend(["--image", str(image_path)])
     if prompt:
         command.append(prompt)
     return command
@@ -76,6 +82,14 @@ def parse_stream_line(
     if not isinstance(record, dict):
         return True, None
     return True, text_from_stream_record(record, call_labels=call_labels)
+
+
+def stream_record_from_line(line: str) -> dict[str, object] | None:
+    try:
+        record = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    return record if isinstance(record, dict) else None
 
 
 def text_from_stream_record(
@@ -583,6 +597,7 @@ def run_codex_json_stream(
     raw_json: bool = False,
     stdout: TextIO | None = None,
     stderr_to_stdout: bool = False,
+    event_callback: Callable[[dict[str, object]], None] | None = None,
 ) -> int:
     out = stdout or sys.stdout
     try:
@@ -599,6 +614,10 @@ def run_codex_json_stream(
     assert process.stdout is not None
     renderer = CodexStreamRenderer()
     for line in process.stdout:
+        if event_callback is not None:
+            record = stream_record_from_line(line)
+            if record is not None:
+                event_callback(record)
         rendered = line.rstrip("\n") if raw_json else renderer.render_line(line)
         if rendered is None:
             continue

@@ -36,11 +36,11 @@ def normalize_argv(argv: list[str]) -> list[str]:
     if argv and argv[0] == "h":
         argv = ["browse", *argv[1:]]
     elif argv and argv[0] == "history":
-        argv = argv[1:]
+        argv = ["browse", *argv[1:]]
     if argv and argv[0] in {"-h", "--help", "--version"}:
         return argv
     if not argv or argv[0].startswith("-"):
-        argv = ["browse", *argv]
+        argv = ["tui", *argv]
     return argv
 
 

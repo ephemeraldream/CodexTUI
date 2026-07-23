@@ -431,6 +431,38 @@ class CliTests(unittest.TestCase):
             raw_json=True,
         )
 
+    @patch("codex_tui.cli.run_tui")
+    def test_bare_ctui_opens_terminal_ui(self, tui_mock) -> None:
+        tui_mock.return_value = 0
+
+        result = main([])
+
+        self.assertEqual(result, 0)
+        tui_mock.assert_called_once_with(
+            include_archived=False,
+            limit=80,
+            query=None,
+            source=None,
+            cwd=None,
+            raw_json=False,
+        )
+
+    @patch("codex_tui.cli.run_tui")
+    def test_bare_ctui_with_here_opens_scoped_terminal_ui(self, tui_mock) -> None:
+        tui_mock.return_value = 0
+        with patch("codex_tui.cli.current_project_root", return_value=Path("/tmp/project")):
+            result = main(["--here"])
+
+        self.assertEqual(result, 0)
+        tui_mock.assert_called_once_with(
+            include_archived=False,
+            limit=80,
+            query=None,
+            source=None,
+            cwd=str(Path("/tmp/project")),
+            raw_json=False,
+        )
+
     @patch("codex_tui.cli.view_thread")
     def test_picker_view_action_renders_clean_transcript_instead_of_resuming(self, view_mock) -> None:
         view_mock.return_value = 0

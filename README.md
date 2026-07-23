@@ -11,7 +11,7 @@ It reads local Codex session files, renders cleaner transcripts, and launches of
 
 - A small CLI named `ctui`.
 - A legacy `cxp` alias for existing local installs during the rename from CodexPlus.
-- A terminal UI for browsing sessions and running follow-up prompts.
+- A terminal UI for browsing conversations, opening full rendered transcripts, and running follow-up prompts.
 - Clean transcript views without system, developer, tool, and bootstrap noise.
 - Search across clean user and assistant messages.
 - Project-scoped history with `--here`.
@@ -163,6 +163,7 @@ The doctor checks:
 
 ```bash
 ctui h
+ctui
 ctui tui
 ctui list
 ctui search "dividends"
@@ -176,8 +177,9 @@ ctui stream "fix the failing test"
 ctui doctor
 ```
 
-Running `ctui` without a subcommand opens the same session browser as `ctui h`.
-Running `ctui history` also opens the session browser.
+Running `ctui` without a subcommand opens the terminal UI.
+Running `ctui --here` opens the same UI scoped to the current repository.
+Running `ctui h` or `ctui history` opens the keyboard session browser.
 The `cxp` command remains available as a legacy alias, but new documentation uses `ctui`.
 
 ## Terminal UI
@@ -185,35 +187,40 @@ The `cxp` command remains available as a legacy alias, but new documentation use
 Open the terminal UI.
 
 ```bash
-ctui tui
+ctui
 ```
 
-The TUI shows a session list on the left and a clean preview on the right.
-If no local Codex history exists yet, the TUI opens an empty state and lets you press `n` to start a fresh Codex prompt.
+The TUI opens in conversation mode.
+The left pane shows real dialogs first, so repeated autonomous `exec` runs do not dominate the default view.
+Press `g` to cycle conversations, grouped runs, and all local history.
+Press `Enter` on a row to render the full chat transcript in the right pane.
+The transcript receives focus after opening, so keyboard scrolling works immediately.
+The transcript uses Rich Markdown rendering for headings, lists, inline code, fenced code blocks, and readable role panels.
+Terminal Markdown is still terminal output, not HTML, but it can be rendered with structure, colors, and syntax highlighting.
 
 TUI keys:
 
 | Key | Action |
 | --- | --- |
-| `Tab` | Switch focus between session list and preview. |
-| `Up`, `Down`, `k`, `j` | Move the selected session or scroll the focused preview. |
-| `PageUp`, `PageDown` | Move or scroll by a larger step. |
-| `Enter` | Ask a follow-up prompt in the selected session. |
-| `n` | Start a fresh Codex prompt through `codex exec --json`. |
-| `r` | Refresh session metadata. |
-| `v` | Show clean chat preview. |
-| `a` | Show assistant-only preview. |
-| `f` | Show final-answer preview. |
-| `u` | Show user-turn preview. |
-| `o` | Show mentioned-file preview. |
-| `q` or `Esc` | Quit. |
+| `Up`, `Down` | Move the selected history row, or scroll the opened transcript when the transcript is focused. |
+| `Enter` | Open the selected conversation transcript. |
+| `PageUp`, `PageDown` | Scroll the opened transcript by a page when the transcript is focused. |
+| `gg`, `Shift-G` | Jump to the start or end of the opened transcript when the transcript is focused. |
+| `Home`, `End` | Also jump to the start or end of the opened transcript when the transcript is focused. |
+| `j`, `k` | Scroll the opened transcript by one line when the transcript is focused. |
+| `/` | Focus history search. |
+| `b`, `F2` | Hide or show the left history pane. |
+| `g` | Cycle history mode when the history list is focused. |
+| `c` | Focus the chat composer for the opened conversation. |
+| `Esc` | Return focus to the history list. |
+| `r` | Reload local history. |
+| `R` | Exit into official `codex resume` for the opened conversation. |
+| `q` | Quit when the history list is focused. |
 
-Follow-up prompts run through `codex exec resume --json`.
-Fresh prompts run through `codex exec --json`.
-CodexTUI captures the stream inside the TUI instead of handing the terminal to Codex's interactive UI.
-
-The stream pane renders submitted prompts, assistant text, task events, command calls, patch events, search activity, MCP tool calls, plan events, rollbacks, token counts, context compaction, rate-limit updates, and tool output.
-After a stream finishes, use arrows or PageUp/PageDown to inspect earlier output before returning to the session dashboard.
+Composer prompts run through `codex exec resume --json`.
+CodexTUI captures that stream inside the transcript pane instead of handing the terminal to Codex's interactive UI.
+The `R` key is available when you want the exact official Codex interactive resume experience.
+The left search input is debounced, so fast typing does not rebuild the history list on every keypress.
 
 ## Browsing Sessions
 
@@ -524,7 +531,7 @@ ctui doctor
 If `ctui` is not found after installation, make sure the `pipx` binary directory is on `PATH`.
 On many systems that directory is `~/.local/bin`.
 
-If `ctui tui` says there are no sessions, press `n` to start a fresh Codex prompt or run Codex once directly to create local history.
+If `ctui tui` says there are no sessions, run `ctui stream "your prompt"` or run Codex once directly to create local history.
 History browsing depends on local Codex state files.
 
 If streaming fails because Codex is not authenticated, run `codex login` or use `OPENAI_API_KEY=... scripts/bootstrap-codextui.sh --with-api-key`.
