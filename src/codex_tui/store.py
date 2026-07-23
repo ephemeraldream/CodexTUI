@@ -126,9 +126,10 @@ class CodexStore:
                 for thread in threads
                 if thread_matches_filters(thread, query=query, source=None, cwd=cwd)
             ]
+        db_filtered_empty = needs_python_filter and not threads
         readable_threads = [thread for thread in threads if thread_rollout_readable(thread)]
         merged_with_fallback = False
-        if db_has_unreadable_rollout:
+        if db_has_unreadable_rollout or db_filtered_empty:
             fallback_threads = self.scan_threads_from_files(
                 include_archived=include_archived,
                 limit=None,
@@ -142,6 +143,8 @@ class CodexStore:
             elif readable_threads:
                 threads = readable_threads
                 merged_with_fallback = True
+            elif db_filtered_empty:
+                return None
         if limit is not None and limit >= 0 and (
             needs_python_filter or merged_with_fallback or reloaded_without_sql_limit
         ):

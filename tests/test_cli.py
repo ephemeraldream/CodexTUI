@@ -460,6 +460,49 @@ class CliTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], ["019f-test-filtered-file"])
         self.assertEqual(rows[0]["title"], "Readable filtered session")
 
+    def test_list_uses_session_files_when_readable_sqlite_rows_do_not_match_query(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            indexed_rollout = write_cli_session(
+                home,
+                "019f-test-indexed-other",
+                cwd="/tmp/other",
+                user_message="Indexed other session",
+            )
+            write_cli_session(
+                home,
+                "019f-test-unindexed-query",
+                cwd="/tmp/project",
+                user_message="Readable unindexed history session",
+            )
+            write_threads_db_row(
+                home,
+                session_id="019f-test-indexed-other",
+                cwd="/tmp/other",
+                source="cli",
+                rollout_path=str(indexed_rollout),
+                title="Indexed other session",
+                preview="",
+                first_user_message="Indexed other session",
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json", "-q", "unindexed history"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-unindexed-query"])
+        self.assertEqual(rows[0]["title"], "Readable unindexed history session")
+
     def test_list_uses_newer_state_database_when_state_five_is_readable(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
