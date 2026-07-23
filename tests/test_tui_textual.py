@@ -140,6 +140,29 @@ class TextualTuiModelTests(unittest.TestCase):
         self.assertIsNone(image_path)
         self.assertIn("pngpaste", error or "")
 
+    def test_status_line_text_compacts_footer_to_fit_narrow_pane(self) -> None:
+        info = tui_textual.SessionInfo(model="gpt-5.5", context_tokens=0, context_window=258400)
+
+        line = tui_textual.status_line_text("10 dialogs loaded.", info, width=50)
+
+        self.assertLessEqual(len(line), 50)
+        self.assertEqual(line, "10 dialogs loaded. | gpt-5.5 | 0/258.4k 0%")
+
+    def test_conversation_title_truncates_to_available_width(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            thread = thread_with_messages(
+                Path(temp_dir),
+                "019f-title-fit",
+                "cli",
+                ["This is a very long conversation title that should fit one row"],
+                ["Answer"],
+            )
+
+            title = tui_textual.conversation_title(thread, width=32)
+
+        self.assertLessEqual(len(title), 32)
+        self.assertIn("...", title)
+
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_enter_opens_conversation_and_focuses_scrollable_transcript(self) -> None:
         async def run_case() -> None:

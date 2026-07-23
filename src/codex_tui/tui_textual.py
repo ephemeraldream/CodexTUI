@@ -36,6 +36,7 @@ from .transcript_blocks import (
     SessionInfo,
     TranscriptBlock,
     changed_paths_summary,
+    context_text,
     default_session_info,
     patch_paths,
     session_footer_text,
@@ -412,8 +413,32 @@ def composer_display_text(payload: ComposerPayload) -> str:
     return f"{payload.prompt}\n\n{suffix}"
 
 
-def conversation_title(thread: ThreadRow) -> str:
-    return f"{truncate(display_title(thread), 96)}  [{short_id(thread.id)}]"
+def conversation_title(thread: ThreadRow, *, width: int | None = None) -> str:
+    title = f"{truncate(display_title(thread), 96)}  [{short_id(thread.id)}]"
+    return truncate(title, width) if width is not None else title
+
+
+def status_line_text(status_text: str, info: SessionInfo, *, width: int | None = None) -> str:
+    status = one_line(status_text) or "Ready"
+    full_footer = session_footer_text(info)
+    full = f"{status} | {full_footer}"
+    if width is None or len(full) <= width:
+        return full
+    compact_footer = compact_session_footer_text(info)
+    compact = f"{status} | {compact_footer}"
+    if len(compact) <= width:
+        return compact
+    separator_width = 3
+    if compact_footer and width > len(compact_footer) + separator_width:
+        status_width = width - len(compact_footer) - separator_width
+        return f"{truncate(status, status_width)} | {compact_footer}"
+    return truncate(status, width)
+
+
+def compact_session_footer_text(info: SessionInfo) -> str:
+    model = truncate(info.model or "?", 18)
+    context = context_text(info.context_tokens, info.context_window)
+    return f"{model} | {context}"
 
 
 def selection_index_for_entry(entries: list[HistoryEntry], thread_id: str) -> int:
@@ -490,7 +515,7 @@ if TEXTUAL_IMPORT_ERROR is None:
         }
 
         #history-title, #conversation-title, #status-line {
-            height: auto;
+            height: 1;
             padding: 0 1;
             background: #111c2d;
             color: #f1e7d0;
@@ -813,7 +838,7 @@ if TEXTUAL_IMPORT_ERROR is None:
                 self.focus_transcript()
 
         def render_conversation(self, thread: ThreadRow) -> None:
-            self.query_one("#conversation-title", Static).update(conversation_title(thread))
+            self.render_conversation_title(thread)
             self.current_session_info = session_info_for_thread(thread)
             self.transcript_blocks = transcript_blocks_for_thread(thread)
             self.expanded_block_ids.clear()
@@ -1015,8 +1040,31 @@ if TEXTUAL_IMPORT_ERROR is None:
 
         def render_status_line(self) -> None:
             self.query_one("#status-line", Static).update(
-                f"{self.status_text} | {session_footer_text(self.current_session_info)}"
+                status_line_text(
+                    self.status_text,
+                    self.current_session_info,
+                    width=self.conversation_content_width(),
+                )
             )
+
+        def render_conversation_title(self, thread: ThreadRow) -> None:
+            self.query_one("#conversation-title", Static).update(
+                conversation_title(thread, width=self.conversation_content_width())
+            )
+
+        def conversation_content_width(self) -> int:
+            pane = self.query_one("#conversation-pane", Vertical)
+            width = pane.size.width
+            if width <= 0:
+                width = self.estimated_conversation_pane_width()
+            return max(1, width - 2)
+
+        def estimated_conversation_pane_width(self) -> int:
+            total_width = max(1, self.size.width)
+            if self.history_visible and total_width > COMPACT_LAYOUT_MAX_WIDTH:
+                history_width = max(28, int(total_width * 0.34))
+                return max(1, total_width - history_width)
+            return total_width
 
         def update_session_info_from_stream_record(self, record: dict[str, object]) -> None:
             thread_id = thread_id_from_stream_record(record)
