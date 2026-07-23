@@ -572,6 +572,9 @@ class TextualTuiModelTests(unittest.TestCase):
                     self.assertLessEqual(len(help_text), app.conversation_content_width())
                     self.assertIn("q", help_text)
                     self.assertIn("b show list", help_text)
+                    status = str(app.query_one("#status-line", tui_textual.Static).render())
+                    self.assertIn("1 dialog loaded.", status)
+                    self.assertNotIn("History pane hidden", status)
 
                     with patch.object(app, "exit") as exit_app:
                         await pilot.press("q")

@@ -907,7 +907,7 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.refresh_history()
             self.sync_footer_visibility()
             if self.size.width <= COMPACT_LAYOUT_MAX_WIDTH:
-                self.set_history_pane_visible(False, focus=False)
+                self.set_history_pane_visible(False, focus=False, announce=False)
                 self.focus_transcript()
                 return
             self.update_composer_help()
@@ -1464,7 +1464,7 @@ if TEXTUAL_IMPORT_ERROR is None:
         def focus_transcript(self) -> None:
             self.query_one("#transcript", ListView).focus()
 
-        def set_history_pane_visible(self, visible: bool, *, focus: bool = True) -> None:
+        def set_history_pane_visible(self, visible: bool, *, focus: bool = True, announce: bool = True) -> None:
             self.history_visible = visible
             pane = self.query_one("#history-pane", Vertical)
             pane.display = visible
@@ -1474,11 +1474,17 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.update_composer_help()
             self.query_one("#root", Horizontal).refresh(layout=True)
             if visible:
-                self.set_status("History pane shown.")
+                if announce:
+                    self.set_status("History pane shown.")
+                else:
+                    self.render_status_line()
                 if focus:
                     self.focus_history_list()
                 return
-            self.set_status("History pane hidden. Press b or F2 to show it.")
+            if announce:
+                self.set_status("History pane hidden. Press b or F2 to show it.")
+            else:
+                self.render_status_line()
             if focus:
                 self.focus_transcript()
 
