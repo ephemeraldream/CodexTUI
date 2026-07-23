@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -446,6 +447,33 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(result, 0)
         stream_mock.assert_called_once_with(["/tmp/codex", "exec", "--json", "Fix the bug"], raw_json=True)
+
+    @patch("codex_tui.cli.run_codex_json_stream")
+    def test_stream_command_attaches_images_to_new_prompt(self, stream_mock) -> None:
+        stream_mock.return_value = 0
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "screen.png"
+            image_path.write_bytes(b"png")
+            with patch.dict(os.environ, {"CODEX_REAL_BIN": "/tmp/codex"}):
+                result = main(["stream", "--image", str(image_path), "Describe", "this"])
+
+        self.assertEqual(result, 0)
+        stream_mock.assert_called_once_with(
+            ["/tmp/codex", "exec", "--json", "--image", str(image_path.resolve()), "Describe this"],
+            raw_json=False,
+        )
+
+    @patch("codex_tui.cli.run_codex_json_stream")
+    def test_stream_command_rejects_missing_images_before_starting_codex(self, stream_mock) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            missing = Path(temp_dir) / "missing.png"
+            with patch.dict(os.environ, {"CODEX_REAL_BIN": "/tmp/codex"}):
+                with patch("codex_tui.cli.sys.stderr", new_callable=StringIO) as stderr:
+                    result = main(["stream", "--image", str(missing), "Describe", "this"])
+
+        self.assertEqual(result, 2)
+        self.assertIn("image not found", stderr.getvalue())
+        stream_mock.assert_not_called()
 
     @patch("codex_tui.cli.run_codex_json_stream")
     def test_stream_resume_resolves_selector_without_opening_interactive_codex(self, stream_mock) -> None:

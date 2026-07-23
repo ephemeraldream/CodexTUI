@@ -441,6 +441,12 @@ Resume an existing session through the same stream path.
 ctui stream --resume 019f4bc1 "continue from here"
 ```
 
+Attach one or more images to a streamed prompt.
+
+```bash
+ctui stream --image screenshot.png --image reference.jpg "describe what changed"
+```
+
 Read the prompt from stdin.
 
 ```bash
