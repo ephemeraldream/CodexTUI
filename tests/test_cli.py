@@ -1041,6 +1041,48 @@ class CliTests(unittest.TestCase):
         self.assertEqual(rows[0]["source"], "cli")
         self.assertEqual(rows[0]["cwd"], "/tmp/project")
 
+    def test_list_decodes_blob_sqlite_rollout_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            rollout = home / "legacy-rollouts" / "blob-path-state.jsonl"
+            write_session_file(
+                rollout,
+                "019f-test-blob-path-state",
+                cwd="/tmp/project",
+                user_message="Readable blob path state session",
+            )
+            write_blob_rollout_path_threads_db_row(
+                home,
+                session_id="",
+                rollout_path=str(rollout),
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "codex_tui",
+                    "list",
+                    "--json",
+                    "-q",
+                    "Readable blob path state session",
+                ],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-blob-path-state"])
+        self.assertEqual(rows[0]["title"], "Readable blob path state session")
+        self.assertEqual(rows[0]["rollout_path"], str(rollout))
+
     def test_list_resolves_relative_sqlite_rollout_paths_from_codex_home(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
@@ -1938,6 +1980,55 @@ def write_blob_archived_threads_db_row(
                 1783677605000,
                 "",
                 title,
+            ),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def write_blob_rollout_path_threads_db_row(
+    home: Path,
+    *,
+    session_id: str,
+    rollout_path: str,
+) -> None:
+    db_path = home / "state_5.sqlite"
+    con = sqlite3.connect(db_path)
+    try:
+        con.execute(
+            """
+            CREATE TABLE threads (
+                id TEXT,
+                title TEXT,
+                cwd TEXT,
+                source TEXT,
+                archived INTEGER,
+                rollout_path BLOB,
+                created_at_ms INTEGER,
+                updated_at_ms INTEGER,
+                recency_at_ms INTEGER,
+                preview TEXT,
+                first_user_message TEXT
+            )
+            """
+        )
+        con.execute(
+            """
+            INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                "",
+                "",
+                "",
+                0,
+                sqlite3.Binary(rollout_path.encode("utf-8")),
+                1783677600000,
+                1783677605000,
+                1783677605000,
+                "",
+                "",
             ),
         )
         con.commit()

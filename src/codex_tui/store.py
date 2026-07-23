@@ -255,7 +255,7 @@ class CodexStore:
             finally:
                 con.close()
             for row in rows:
-                thread_id = str(row["id"] or "")
+                thread_id = state_db_text_value(row["id"])
                 rollout_path = state_row_rollout_path(row["rollout_path"], base_dir=db_path.parent)
                 keys.update(state_thread_key_values(thread_id, rollout_path))
         return keys
@@ -343,6 +343,20 @@ def safe_ms(value: object) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def state_db_text_value(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        raw_value = bytes(value)
+        if not raw_value:
+            return ""
+        try:
+            return raw_value.decode("utf-8")
+        except UnicodeDecodeError:
+            return ""
+    return str(value)
 
 
 def state_db_sort_key(path: Path) -> tuple[int, float, str]:
@@ -501,12 +515,12 @@ def state_db_archived_bool(value: object) -> bool:
 
 def thread_from_state_row(row: sqlite3.Row, *, base_dir: Path | None = None) -> ThreadRow:
     rollout_path = state_row_rollout_path(row["rollout_path"], base_dir=base_dir)
-    session_id = str(row["id"] or "")
-    title = clean_metadata_text(str(row["title"] or ""))
-    cwd = str(row["cwd"] or "")
-    source = str(row["source"] or "")
-    preview = clean_metadata_text(str(row["preview"] or ""))
-    first = clean_metadata_text(str(row["first_user_message"] or ""))
+    session_id = state_db_text_value(row["id"])
+    title = clean_metadata_text(state_db_text_value(row["title"]))
+    cwd = state_db_text_value(row["cwd"])
+    source = state_db_text_value(row["source"])
+    preview = clean_metadata_text(state_db_text_value(row["preview"]))
+    first = clean_metadata_text(state_db_text_value(row["first_user_message"]))
     if rollout_path and (not session_id or not cwd or not source):
         rollout_meta = read_session_meta(Path(rollout_path))
         session_id = session_id or rollout_meta.get("id", "") or id_from_path(Path(rollout_path))
@@ -535,7 +549,7 @@ def thread_from_state_row(row: sqlite3.Row, *, base_dir: Path | None = None) -> 
 
 
 def state_row_rollout_path(value: object, *, base_dir: Path | None = None) -> str:
-    raw_path = str(value or "")
+    raw_path = state_db_text_value(value)
     if not raw_path:
         return ""
     path = Path(raw_path).expanduser()
