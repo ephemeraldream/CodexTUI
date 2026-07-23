@@ -862,12 +862,19 @@ class CliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
             text_zero_rollout = home / "legacy-rollouts" / "text-zero.jsonl"
+            text_padded_zero_rollout = home / "legacy-rollouts" / "text-padded-zero.jsonl"
             text_false_rollout = home / "legacy-rollouts" / "text-false.jsonl"
             write_session_file(
                 text_zero_rollout,
                 "019f-test-text-zero-archived",
                 cwd="/tmp/project",
                 user_message="Text zero archived flag session",
+            )
+            write_session_file(
+                text_padded_zero_rollout,
+                "019f-test-text-padded-zero-archived",
+                cwd="/tmp/project",
+                user_message="Text padded zero archived flag session",
             )
             write_session_file(
                 text_false_rollout,
@@ -882,6 +889,14 @@ class CliTests(unittest.TestCase):
                 title="Text zero archived flag session",
                 archived_value="0",
                 recency_at_ms=1783677606000,
+            )
+            write_text_archived_threads_db_row(
+                home,
+                session_id="019f-test-text-padded-zero-archived",
+                rollout_path=str(text_padded_zero_rollout),
+                title="Text padded zero archived flag session",
+                archived_value=" 0 ",
+                recency_at_ms=1783677605500,
             )
             write_text_archived_threads_db_row(
                 home,
@@ -908,9 +923,13 @@ class CliTests(unittest.TestCase):
         rows = [json.loads(line) for line in result.stdout.splitlines()]
         self.assertEqual(
             [row["id"] for row in rows],
-            ["019f-test-text-zero-archived", "019f-test-text-false-archived"],
+            [
+                "019f-test-text-zero-archived",
+                "019f-test-text-padded-zero-archived",
+                "019f-test-text-false-archived",
+            ],
         )
-        self.assertEqual([row["archived"] for row in rows], [False, False])
+        self.assertEqual([row["archived"] for row in rows], [False, False, False])
 
     def test_single_session_commands_here_resolve_last_in_current_git_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
