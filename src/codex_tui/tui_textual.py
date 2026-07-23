@@ -157,19 +157,23 @@ def run_textual_tui(
 def build_history_entries(threads: Iterable[ThreadRow], *, mode: str, query: str = "") -> list[HistoryEntry]:
     thread_list = list(threads)
     conversations: list[HistoryEntry] = []
-    runs_by_title: dict[str, list[ThreadRow]] = {}
+    runs_by_title_and_scope: dict[tuple[str, str], list[ThreadRow]] = {}
     individual_runs: list[ThreadRow] = []
     include_transcripts = bool(query.strip())
     for thread in thread_list:
         if is_conversation_thread(thread):
             conversations.append(entry_for_thread(thread, kind="conversation", include_transcripts=include_transcripts))
         else:
-            key = normalized_run_title(thread)
-            if key:
-                runs_by_title.setdefault(key, []).append(thread)
+            title_key = normalized_run_title(thread)
+            if title_key:
+                scope_key = normalized_run_scope(thread)
+                runs_by_title_and_scope.setdefault((title_key, scope_key), []).append(thread)
             else:
                 individual_runs.append(thread)
-    runs = [entry_for_run_group(title, group, include_transcripts=include_transcripts) for title, group in runs_by_title.items()]
+    runs = [
+        entry_for_run_group(title, group, include_transcripts=include_transcripts)
+        for (title, _scope), group in runs_by_title_and_scope.items()
+    ]
     runs.extend(entry_for_thread(thread, kind="run", include_transcripts=include_transcripts) for thread in individual_runs)
     runs.sort(key=lambda entry: entry.thread.recency_at_ms, reverse=True)
     conversations.sort(key=lambda entry: entry.thread.recency_at_ms, reverse=True)
@@ -222,6 +226,12 @@ def normalized_run_title(thread: ThreadRow) -> str:
     if not title:
         return ""
     return " ".join(title.casefold().split())
+
+
+def normalized_run_scope(thread: ThreadRow) -> str:
+    cwd = str(Path(thread.cwd).expanduser()) if thread.cwd else ""
+    source = thread.source.casefold() if thread.source else ""
+    return f"{source}\n{cwd}"
 
 
 def entry_for_thread(thread: ThreadRow, *, kind: str, include_transcripts: bool = False) -> HistoryEntry:

@@ -48,6 +48,34 @@ class TextualTuiModelTests(unittest.TestCase):
         self.assertEqual(len(runs[0].threads), 2)
         self.assertEqual(len(all_entries), 2)
 
+    def test_run_groups_do_not_merge_matching_titles_across_projects(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            first = thread_with_messages(
+                root,
+                "019f-run-alpha",
+                "exec",
+                ["Run checks"],
+                ["{}"],
+                cwd="/tmp/project-alpha",
+            )
+            second = thread_with_messages(
+                root,
+                "019f-run-beta",
+                "exec",
+                ["Run checks"],
+                ["{}"],
+                cwd="/tmp/project-beta",
+            )
+
+            runs = build_history_entries([first, second], mode="runs")
+            all_entries = build_history_entries([first, second], mode="all")
+
+        self.assertEqual(len(runs), 2)
+        self.assertEqual([entry.kind for entry in runs], ["run", "run"])
+        self.assertEqual({entry.thread.cwd for entry in runs}, {"/tmp/project-alpha", "/tmp/project-beta"})
+        self.assertEqual(len(all_entries), 2)
+
     def test_resumed_exec_thread_counts_as_conversation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
