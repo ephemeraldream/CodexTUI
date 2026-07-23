@@ -879,6 +879,8 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.new_dialog_active = False
             self.streaming = False
             self.history_visible = True
+            self.compact_layout_active = False
+            self.history_auto_hidden_for_compact = False
             self.pending_gg = False
             self.pending_image_paths: list[str] = []
             self.search_timer: Timer | None = None
@@ -907,7 +909,9 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.refresh_history()
             self.sync_footer_visibility()
             if self.size.width <= COMPACT_LAYOUT_MAX_WIDTH:
-                self.set_history_pane_visible(False, focus=False, announce=False)
+                self.compact_layout_active = True
+                self.history_auto_hidden_for_compact = self.history_visible
+                self.set_history_pane_visible(False, focus=False, announce=False, auto=True)
                 self.focus_transcript()
                 return
             self.update_composer_help()
@@ -961,6 +965,7 @@ if TEXTUAL_IMPORT_ERROR is None:
                 )
 
         def refresh_width_sensitive_layout(self) -> None:
+            self.sync_compact_history_layout()
             self.sync_footer_visibility()
             self.render_history_mode_line()
             self.render_history_rows()
@@ -1424,6 +1429,8 @@ if TEXTUAL_IMPORT_ERROR is None:
             )
 
         def conversation_content_width(self) -> int:
+            if not self.history_visible:
+                return max(1, self.estimated_conversation_pane_width() - 2)
             pane = self.query_one("#conversation-pane", Vertical)
             width = pane.size.width
             if width <= 0:
@@ -1464,7 +1471,16 @@ if TEXTUAL_IMPORT_ERROR is None:
         def focus_transcript(self) -> None:
             self.query_one("#transcript", ListView).focus()
 
-        def set_history_pane_visible(self, visible: bool, *, focus: bool = True, announce: bool = True) -> None:
+        def set_history_pane_visible(
+            self,
+            visible: bool,
+            *,
+            focus: bool = True,
+            announce: bool = True,
+            auto: bool = False,
+        ) -> None:
+            if not auto:
+                self.history_auto_hidden_for_compact = False
             self.history_visible = visible
             pane = self.query_one("#history-pane", Vertical)
             pane.display = visible
@@ -1490,6 +1506,27 @@ if TEXTUAL_IMPORT_ERROR is None:
 
         def sync_footer_visibility(self) -> None:
             self.query_one(Footer).display = self.size.width > COMPACT_LAYOUT_MAX_WIDTH
+
+        def sync_compact_history_layout(self) -> None:
+            compact = self.size.width <= COMPACT_LAYOUT_MAX_WIDTH
+            if compact:
+                if not self.compact_layout_active:
+                    self.compact_layout_active = True
+                    if self.history_visible:
+                        focused_id = getattr(self.focused, "id", "")
+                        self.history_auto_hidden_for_compact = True
+                        self.set_history_pane_visible(False, focus=False, announce=False, auto=True)
+                        if focused_id in {"thread-list", "history-search"}:
+                            self.focus_transcript()
+                return
+            if not self.compact_layout_active:
+                return
+            self.compact_layout_active = False
+            if self.history_auto_hidden_for_compact and not self.history_visible:
+                self.history_auto_hidden_for_compact = False
+                self.set_history_pane_visible(True, focus=False, announce=False, auto=True)
+            else:
+                self.history_auto_hidden_for_compact = False
 
         def update_composer_help(self) -> None:
             self.query_one("#composer-help", Static).update(

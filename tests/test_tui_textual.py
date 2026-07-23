@@ -607,6 +607,55 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_resize_to_compact_auto_hides_history_pane(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                thread = thread_with_messages(Path(temp_dir), "019f-compact-resize", "cli", ["Question"], ["Answer"])
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.pause()
+
+                    await pilot.resize_terminal(50, 24)
+                    await pilot.pause()
+
+                    pane = app.query_one("#history-pane")
+                    conversation = app.query_one("#conversation-pane")
+                    help_text = str(app.query_one("#composer-help", tui_textual.Static).render())
+                    status = str(app.query_one("#status-line", tui_textual.Static).render())
+
+                    self.assertFalse(app.history_visible)
+                    self.assertFalse(pane.display)
+                    self.assertGreaterEqual(conversation.region.width, 48)
+                    self.assertEqual(getattr(app.focused, "id", ""), "transcript")
+                    self.assertIn("b show list", help_text)
+                    self.assertIn("q", help_text)
+                    self.assertIn("1 dialog loaded.", status)
+                    self.assertNotIn("History pane hidden", status)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_wide_resize_restores_auto_hidden_history_pane_without_stealing_focus(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                thread = thread_with_messages(Path(temp_dir), "019f-wide-resize", "cli", ["Question"], ["Answer"])
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                async with app.run_test(size=(50, 24)) as pilot:
+                    await pilot.pause()
+                    self.assertFalse(app.history_visible)
+
+                    await pilot.resize_terminal(90, 24)
+                    await pilot.pause()
+
+                    pane = app.query_one("#history-pane")
+
+                    self.assertTrue(app.history_visible)
+                    self.assertTrue(pane.display)
+                    self.assertEqual(getattr(app.focused, "id", ""), "transcript")
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_search_shortcut_reveals_hidden_history_pane(self) -> None:
         async def run_case() -> None:
             with tempfile.TemporaryDirectory() as temp_dir:
