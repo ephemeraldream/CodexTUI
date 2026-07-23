@@ -108,10 +108,10 @@ class CodexStore:
                 sql += " LIMIT ?"
                 sql_params.append(limit)
             rows = con.execute(sql, sql_params).fetchall()
-            db_threads = [thread_from_state_row(row) for row in rows]
+            db_threads = [thread_from_state_row(row, base_dir=db_path.parent) for row in rows]
             if use_sql_limit and any(not thread_rollout_readable(thread) for thread in db_threads):
                 rows = con.execute(base_sql, params).fetchall()
-                db_threads = [thread_from_state_row(row) for row in rows]
+                db_threads = [thread_from_state_row(row, base_dir=db_path.parent) for row in rows]
                 reloaded_without_sql_limit = True
         except sqlite3.Error:
             return None
@@ -426,8 +426,8 @@ def state_db_archived_bool(value: object) -> bool:
     return bool(value)
 
 
-def thread_from_state_row(row: sqlite3.Row) -> ThreadRow:
-    rollout_path = str(row["rollout_path"] or "")
+def thread_from_state_row(row: sqlite3.Row, *, base_dir: Path | None = None) -> ThreadRow:
+    rollout_path = state_row_rollout_path(row["rollout_path"], base_dir=base_dir)
     title = clean_metadata_text(str(row["title"] or ""))
     cwd = str(row["cwd"] or "")
     source = str(row["source"] or "")
@@ -457,6 +457,16 @@ def thread_from_state_row(row: sqlite3.Row) -> ThreadRow:
         preview=preview,
         first_user_message=first,
     )
+
+
+def state_row_rollout_path(value: object, *, base_dir: Path | None = None) -> str:
+    raw_path = str(value or "")
+    if not raw_path:
+        return ""
+    path = Path(raw_path).expanduser()
+    if not path.is_absolute() and base_dir is not None:
+        path = base_dir / path
+    return str(path)
 
 
 def thread_rollout_readable(thread: ThreadRow) -> bool:

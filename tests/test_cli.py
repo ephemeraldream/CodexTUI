@@ -858,6 +858,56 @@ class CliTests(unittest.TestCase):
         self.assertEqual(rows[0]["source"], "cli")
         self.assertEqual(rows[0]["cwd"], "/tmp/project")
 
+    def test_list_resolves_relative_sqlite_rollout_paths_from_codex_home(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            relative_rollout = Path("legacy-rollouts") / "relative.jsonl"
+            rollout = home / relative_rollout
+            write_session_file(
+                rollout,
+                "019f-test-relative-rollout",
+                cwd="/tmp/project",
+                user_message="Relative rollout path session",
+            )
+            write_threads_db_row(
+                home,
+                session_id="019f-test-relative-rollout",
+                cwd="",
+                source="",
+                rollout_path=str(relative_rollout),
+                title="",
+                preview="",
+                first_user_message="",
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "codex_tui",
+                    "list",
+                    "--json",
+                    "-q",
+                    "Relative rollout path session",
+                ],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-relative-rollout"])
+        self.assertEqual(rows[0]["title"], "Relative rollout path session")
+        self.assertEqual(rows[0]["source"], "cli")
+        self.assertEqual(rows[0]["cwd"], "/tmp/project")
+        self.assertEqual(rows[0]["rollout_path"], str(rollout))
+
     def test_list_normalizes_text_archived_flags_from_state_database(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
