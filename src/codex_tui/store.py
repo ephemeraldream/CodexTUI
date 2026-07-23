@@ -378,11 +378,24 @@ def normalize_state_timestamp_sql(column: str, alias: str, numeric_unit: str) ->
 
 
 def state_db_unarchived_clause() -> str:
+    archived_text = "lower(trim(CAST(archived AS TEXT)))"
     false_values = "'', '0', 'false', 'no', 'off'"
+    numeric_zero_text = (
+        f"({archived_text} GLOB '*0*' "
+        f"AND {archived_text} NOT GLOB '*[^0-9.+-e]*' "
+        f"AND ({archived_text} GLOB '[0-9]*' "
+        f"OR {archived_text} GLOB '+[0-9]*' "
+        f"OR {archived_text} GLOB '-[0-9]*' "
+        f"OR {archived_text} GLOB '.[0-9]*' "
+        f"OR {archived_text} GLOB '+.[0-9]*' "
+        f"OR {archived_text} GLOB '-.[0-9]*') "
+        f"AND CAST({archived_text} AS REAL) = 0)"
+    )
     return (
         "(archived IS NULL "
         "OR (typeof(archived) IN ('integer', 'real') AND CAST(archived AS REAL) = 0) "
-        f"OR lower(trim(CAST(archived AS TEXT))) IN ({false_values}))"
+        f"OR {archived_text} IN ({false_values}) "
+        f"OR {numeric_zero_text})"
     )
 
 
@@ -393,6 +406,11 @@ def state_db_archived_bool(value: object) -> bool:
         normalized = value.strip().casefold()
         if normalized in {"", "0", "false", "no", "off"}:
             return False
+        try:
+            if any(character.isdigit() for character in normalized) and float(normalized) == 0:
+                return False
+        except ValueError:
+            pass
         if normalized in {"1", "true", "yes", "on"}:
             return True
     return bool(value)

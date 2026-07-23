@@ -863,6 +863,7 @@ class CliTests(unittest.TestCase):
             home = Path(temp_dir)
             text_zero_rollout = home / "legacy-rollouts" / "text-zero.jsonl"
             text_padded_zero_rollout = home / "legacy-rollouts" / "text-padded-zero.jsonl"
+            text_decimal_zero_rollout = home / "legacy-rollouts" / "text-decimal-zero.jsonl"
             text_false_rollout = home / "legacy-rollouts" / "text-false.jsonl"
             write_session_file(
                 text_zero_rollout,
@@ -875,6 +876,12 @@ class CliTests(unittest.TestCase):
                 "019f-test-text-padded-zero-archived",
                 cwd="/tmp/project",
                 user_message="Text padded zero archived flag session",
+            )
+            write_session_file(
+                text_decimal_zero_rollout,
+                "019f-test-text-decimal-zero-archived",
+                cwd="/tmp/project",
+                user_message="Text decimal zero archived flag session",
             )
             write_session_file(
                 text_false_rollout,
@@ -897,6 +904,14 @@ class CliTests(unittest.TestCase):
                 title="Text padded zero archived flag session",
                 archived_value=" 0 ",
                 recency_at_ms=1783677605500,
+            )
+            write_text_archived_threads_db_row(
+                home,
+                session_id="019f-test-text-decimal-zero-archived",
+                rollout_path=str(text_decimal_zero_rollout),
+                title="Text decimal zero archived flag session",
+                archived_value="0.0",
+                recency_at_ms=1783677605250,
             )
             write_text_archived_threads_db_row(
                 home,
@@ -926,10 +941,11 @@ class CliTests(unittest.TestCase):
             [
                 "019f-test-text-zero-archived",
                 "019f-test-text-padded-zero-archived",
+                "019f-test-text-decimal-zero-archived",
                 "019f-test-text-false-archived",
             ],
         )
-        self.assertEqual([row["archived"] for row in rows], [False, False, False])
+        self.assertEqual([row["archived"] for row in rows], [False, False, False, False])
 
     def test_list_normalizes_real_zero_archived_flag_from_state_database(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
