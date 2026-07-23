@@ -379,7 +379,11 @@ def normalize_state_timestamp_sql(column: str, alias: str, numeric_unit: str) ->
 
 def state_db_unarchived_clause() -> str:
     false_values = "'', '0', 'false', 'no', 'off'"
-    return f"(archived IS NULL OR lower(trim(CAST(archived AS TEXT))) IN ({false_values}))"
+    return (
+        "(archived IS NULL "
+        "OR (typeof(archived) IN ('integer', 'real') AND CAST(archived AS REAL) = 0) "
+        f"OR lower(trim(CAST(archived AS TEXT))) IN ({false_values}))"
+    )
 
 
 def state_db_archived_bool(value: object) -> bool:

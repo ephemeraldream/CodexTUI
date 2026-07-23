@@ -931,6 +931,41 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual([row["archived"] for row in rows], [False, False, False])
 
+    def test_list_normalizes_real_zero_archived_flag_from_state_database(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            rollout = home / "legacy-rollouts" / "real-zero.jsonl"
+            write_session_file(
+                rollout,
+                "019f-test-real-zero-archived",
+                cwd="/tmp/project",
+                user_message="Real zero archived flag session",
+            )
+            write_real_archived_threads_db_row(
+                home,
+                session_id="019f-test-real-zero-archived",
+                rollout_path=str(rollout),
+                title="Real zero archived flag session",
+                archived_value=0.0,
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-real-zero-archived"])
+        self.assertEqual(rows[0]["archived"], False)
+
     def test_single_session_commands_here_resolve_last_in_current_git_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1429,6 +1464,57 @@ def write_text_archived_threads_db_row(
                 1783677600000,
                 recency_at_ms,
                 recency_at_ms,
+                "",
+                title,
+            ),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def write_real_archived_threads_db_row(
+    home: Path,
+    *,
+    session_id: str,
+    rollout_path: str,
+    title: str,
+    archived_value: float,
+) -> None:
+    db_path = home / "state_5.sqlite"
+    con = sqlite3.connect(db_path)
+    try:
+        con.execute(
+            """
+            CREATE TABLE threads (
+                id TEXT,
+                title TEXT,
+                cwd TEXT,
+                source TEXT,
+                archived REAL,
+                rollout_path TEXT,
+                created_at_ms INTEGER,
+                updated_at_ms INTEGER,
+                recency_at_ms INTEGER,
+                preview TEXT,
+                first_user_message TEXT
+            )
+            """
+        )
+        con.execute(
+            """
+            INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                title,
+                "/tmp/project",
+                "cli",
+                archived_value,
+                rollout_path,
+                1783677600000,
+                1783677605000,
+                1783677605000,
                 "",
                 title,
             ),
