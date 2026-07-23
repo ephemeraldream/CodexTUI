@@ -33,7 +33,7 @@ The shortest setup is clone, bootstrap, then open the TUI.
 git clone https://github.com/ephemeraldream/CodexTUI.git
 cd CodexTUI
 scripts/bootstrap-codextui.sh --yes
-ctui tui
+ctui
 ```
 
 The bootstrap script checks Python, finds or installs Codex CLI, runs Codex login when needed, installs CodexTUI, and finishes with `ctui doctor`.
@@ -194,34 +194,41 @@ The TUI opens in conversation mode.
 The left pane shows real dialogs first, so repeated autonomous `exec` runs do not dominate the default view.
 If there are no dialogs but Codex exec runs exist, the TUI opens runs mode instead.
 Press `g` to cycle conversations, grouped runs, and all local history.
-Press `Enter` on a row to render the full chat transcript in the right pane.
+The list opens the highlighted conversation in the right pane automatically.
+Press `Enter` on a row to move focus into the full transcript.
 The transcript receives focus after opening, so keyboard scrolling works immediately.
-The transcript uses Rich Markdown rendering for headings, lists, inline code, fenced code blocks, and readable role panels.
+The transcript uses Rich Markdown rendering for headings, lists, inline code, fenced code blocks, readable role panels, expandable file changes, and folded long tool output.
 Terminal Markdown is still terminal output, not HTML, but it can be rendered with structure, colors, and syntax highlighting.
 
 TUI keys:
 
 | Key | Action |
 | --- | --- |
-| `Up`, `Down` | Move the selected history row, or scroll the opened transcript when the transcript is focused. |
-| `Enter` | Open the selected conversation transcript. |
+| `Up`, `Down`, `j`, `k` | Move the selected history row, or move between transcript blocks when the transcript is focused. |
+| `Enter` | Focus the opened transcript from history, or expand and collapse the selected expandable transcript block. |
+| `t` | Expand and collapse the selected expandable transcript block. |
 | `PageUp`, `PageDown` | Scroll the opened transcript by a page when the transcript is focused. |
+| `Ctrl-j`, `Ctrl-k`, `Alt-j`, `Alt-k` | Scroll inside the selected long transcript block. |
 | `gg`, `Shift-G` | Jump to the start or end of the opened transcript when the transcript is focused. |
 | `Home`, `End` | Also jump to the start or end of the opened transcript when the transcript is focused. |
-| `j`, `k` | Scroll the opened transcript by one line when the transcript is focused. |
-| `/` | Focus history search. |
+| `/` | Show and focus history search. |
 | `b`, `F2` | Hide or show the left history pane. |
 | `g` | Cycle history mode when the history list is focused. |
-| `c` | Focus the chat composer for the opened conversation. |
+| `n` | Start a new Codex dialog and focus the composer. |
+| `i`, `c` | Focus the chat composer. |
 | `Esc` | Return focus to the history list. |
 | `r` | Reload local history. |
 | `R` | Exit into official `codex resume` for the opened conversation. |
 | `q` | Quit when the history list is focused. |
 
-Composer prompts run through `codex exec resume --json`.
+Composer follow-ups run through `codex exec resume --json`.
+New dialogs started with `n` run through `codex exec --json`.
 CodexTUI captures that stream inside the transcript pane instead of handing the terminal to Codex's interactive UI.
 The `R` key is available when you want the exact official Codex interactive resume experience.
 The left search input is debounced, so fast typing does not rebuild the history list on every keypress.
+Inside the composer, attach images with `/image path/to/file.png`, `/img path/to/file.png`, or `@path/to/file.png`.
+Pasted image paths and `file://` URLs are detected.
+On macOS, clipboard image capture uses `pngpaste` when it is on `PATH`.
 
 ## Browsing Sessions
 
@@ -538,7 +545,7 @@ ctui doctor
 If `ctui` is not found after installation, make sure the `pipx` binary directory is on `PATH`.
 On many systems that directory is `~/.local/bin`.
 
-If `ctui tui` says there are no sessions, run `ctui stream "your prompt"` or run Codex once directly to create local history.
+If `ctui tui` says there are no sessions, press `n` to start a new Codex dialog, run `ctui stream "your prompt"`, or run Codex once directly to create local history.
 History browsing depends on local Codex state files.
 
 If streaming fails because Codex is not authenticated, run `codex login` or use `OPENAI_API_KEY=... scripts/bootstrap-codextui.sh --with-api-key`.
