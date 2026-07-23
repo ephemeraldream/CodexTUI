@@ -505,6 +505,23 @@ def composer_help_text(
     return truncate(variants[-1], width)
 
 
+def mode_line_text(mode: str, count: int, *, width: int | None = None) -> str:
+    mode_label = {"conversations": "conv", "runs": "runs", "all": "all"}.get(mode, mode)
+    variants = [
+        f"{mode} | {count} shown | / search | g mode",
+        f"{mode_label} | {count} shown | / search | g",
+        f"{mode_label} | {count} shown | / g",
+        f"{mode_label} | {count} | / g",
+        f"{mode_label} | {count}",
+    ]
+    if width is None:
+        return variants[0]
+    for variant in variants:
+        if len(variant) <= width:
+            return variant
+    return truncate(variants[-1], width)
+
+
 def image_attachment_help_text(count: int) -> str:
     if count <= 0:
         return "Cmd/Ctrl+V img"
@@ -717,7 +734,13 @@ if TEXTUAL_IMPORT_ERROR is None:
             selected_id = self.current_thread.id if self.current_thread else ""
             self.entries = build_history_entries(self.threads, mode=self.history_mode, query=self.query)
             mode_line = self.query_one("#mode-line", Static)
-            mode_line.update(f"{self.history_mode} | {len(self.entries)} shown | / search | g mode")
+            mode_line.update(
+                mode_line_text(
+                    self.history_mode,
+                    len(self.entries),
+                    width=self.history_mode_content_width(),
+                )
+            )
             list_view = self.query_one("#thread-list", ListView)
             list_view.clear()
             row_width = self.history_row_width()
@@ -1305,6 +1328,13 @@ if TEXTUAL_IMPORT_ERROR is None:
         def history_row_width(self) -> int:
             estimated = int(self.size.width * 0.34) - 6
             return max(MIN_HISTORY_ROW_WIDTH, min(MAX_HISTORY_ROW_WIDTH, estimated))
+
+        def history_mode_content_width(self) -> int:
+            pane = self.query_one("#history-pane", Vertical)
+            width = pane.size.width
+            if width <= 0:
+                width = max(28, int(max(1, self.size.width) * 0.34))
+            return max(1, width - 2)
 
 
     class TextualStreamWriter:

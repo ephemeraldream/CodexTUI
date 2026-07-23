@@ -178,6 +178,12 @@ class TextualTuiModelTests(unittest.TestCase):
         self.assertIn("3 images", help_text)
         self.assertIn("b show list", help_text)
 
+    def test_mode_line_text_compacts_to_history_pane_width(self) -> None:
+        text = tui_textual.mode_line_text("conversations", 123, width=26)
+
+        self.assertLessEqual(len(text), 26)
+        self.assertEqual(text, "conv | 123 shown | / g")
+
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_enter_opens_conversation_and_focuses_scrollable_transcript(self) -> None:
         async def run_case() -> None:
@@ -195,6 +201,22 @@ class TextualTuiModelTests(unittest.TestCase):
                     await pilot.pause()
 
                     self.assertEqual(getattr(app.focused, "id", ""), "transcript")
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_history_mode_line_fits_80_column_history_pane(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                thread = thread_with_messages(Path(temp_dir), "019f-mode-line", "cli", ["Question"], ["Answer"])
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                async with app.run_test(size=(80, 24)) as pilot:
+                    await pilot.pause()
+
+                    mode_line = str(app.query_one("#mode-line", tui_textual.Static).render())
+
+                    self.assertLessEqual(len(mode_line), app.history_mode_content_width())
+                    self.assertEqual(mode_line, "conv | 1 shown | / g")
 
         asyncio.run(run_case())
 
