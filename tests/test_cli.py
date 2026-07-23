@@ -809,6 +809,60 @@ class CliTests(unittest.TestCase):
         self.assertEqual(rows[0]["source"], "cli")
         self.assertEqual(rows[0]["cwd"], "/tmp/project")
 
+    def test_list_normalizes_text_archived_flags_from_state_database(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            text_zero_rollout = home / "legacy-rollouts" / "text-zero.jsonl"
+            text_false_rollout = home / "legacy-rollouts" / "text-false.jsonl"
+            write_session_file(
+                text_zero_rollout,
+                "019f-test-text-zero-archived",
+                cwd="/tmp/project",
+                user_message="Text zero archived flag session",
+            )
+            write_session_file(
+                text_false_rollout,
+                "019f-test-text-false-archived",
+                cwd="/tmp/project",
+                user_message="Text false archived flag session",
+            )
+            write_text_archived_threads_db_row(
+                home,
+                session_id="019f-test-text-zero-archived",
+                rollout_path=str(text_zero_rollout),
+                title="Text zero archived flag session",
+                archived_value="0",
+                recency_at_ms=1783677606000,
+            )
+            write_text_archived_threads_db_row(
+                home,
+                session_id="019f-test-text-false-archived",
+                rollout_path=str(text_false_rollout),
+                title="Text false archived flag session",
+                archived_value="false",
+                recency_at_ms=1783677605000,
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(
+            [row["id"] for row in rows],
+            ["019f-test-text-zero-archived", "019f-test-text-false-archived"],
+        )
+        self.assertEqual([row["archived"] for row in rows], [False, False])
+
     def test_single_session_commands_here_resolve_last_in_current_git_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1212,6 +1266,58 @@ def write_minimal_threads_db_row(
                 0,
                 rollout_path,
                 updated_at,
+            ),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def write_text_archived_threads_db_row(
+    home: Path,
+    *,
+    session_id: str,
+    rollout_path: str,
+    title: str,
+    archived_value: str,
+    recency_at_ms: int,
+) -> None:
+    db_path = home / "state_5.sqlite"
+    con = sqlite3.connect(db_path)
+    try:
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS threads (
+                id TEXT,
+                title TEXT,
+                cwd TEXT,
+                source TEXT,
+                archived TEXT,
+                rollout_path TEXT,
+                created_at_ms INTEGER,
+                updated_at_ms INTEGER,
+                recency_at_ms INTEGER,
+                preview TEXT,
+                first_user_message TEXT
+            )
+            """
+        )
+        con.execute(
+            """
+            INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                title,
+                "/tmp/project",
+                "cli",
+                archived_value,
+                rollout_path,
+                1783677600000,
+                recency_at_ms,
+                recency_at_ms,
+                "",
+                title,
             ),
         )
         con.commit()

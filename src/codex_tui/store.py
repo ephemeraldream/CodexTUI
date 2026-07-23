@@ -91,7 +91,7 @@ class CodexStore:
             clauses: list[str] = []
             params: list[object] = []
             if not include_archived and "archived" in columns:
-                clauses.append("archived = 0")
+                clauses.append(state_db_unarchived_clause())
             where = "WHERE " + " AND ".join(clauses) if clauses else ""
             base_sql = f"""
                 SELECT {", ".join(select_columns)}
@@ -345,6 +345,23 @@ def select_recency_at_ms_column(columns: set[str]) -> str:
     return "0 AS recency_at_ms"
 
 
+def state_db_unarchived_clause() -> str:
+    false_values = "'', '0', 'false', 'no', 'off'"
+    return f"(archived IS NULL OR lower(CAST(archived AS TEXT)) IN ({false_values}))"
+
+
+def state_db_archived_bool(value: object) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"", "0", "false", "no", "off"}:
+            return False
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+    return bool(value)
+
+
 def thread_from_state_row(row: sqlite3.Row) -> ThreadRow:
     rollout_path = str(row["rollout_path"] or "")
     title = clean_metadata_text(str(row["title"] or ""))
@@ -368,7 +385,7 @@ def thread_from_state_row(row: sqlite3.Row) -> ThreadRow:
         title=title,
         cwd=cwd,
         source=source,
-        archived=bool(row["archived"]),
+        archived=state_db_archived_bool(row["archived"]),
         rollout_path=rollout_path,
         created_at_ms=safe_ms(row["created_at_ms"]),
         updated_at_ms=safe_ms(row["updated_at_ms"]),
