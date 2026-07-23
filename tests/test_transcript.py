@@ -36,11 +36,70 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual(messages[0].text, "Run the autonomous iteration")
         self.assertEqual(messages[1].text, '{"success": true}')
 
+    def test_top_level_completed_messages_are_read_as_fallback_history(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-items", "cwd": "/tmp/project", "source": "cli"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "item.completed",
+                    "item": {"id": "item_0", "type": "user_message", "text": "Top-level request"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:02.000Z",
+                    "type": "item.completed",
+                    "item": {"id": "item_1", "type": "agent_message", "text": "Top-level reply."},
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            messages = read_messages(path)
+
+        self.assertEqual([message.role for message in messages], ["user", "assistant"])
+        self.assertEqual(messages[0].text, "Top-level request")
+        self.assertEqual(messages[1].text, "Top-level reply.")
+
     def test_event_user_messages_skip_bootstrap_context(self) -> None:
         messages = read_messages(FIXTURES / "rollout-event-bootstrap.jsonl")
         self.assertEqual([message.role for message in messages], ["user", "assistant"])
         self.assertEqual(messages[0].text, "Show me the final answer")
         self.assertNotIn("hidden bootstrap", "\n".join(message.text for message in messages))
+
+    def test_internal_turn_abort_user_messages_are_hidden(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-abort", "cwd": "/tmp/project", "source": "cli"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "user_message",
+                        "message": (
+                            "<turn_aborted> The user interrupted the previous turn on purpose. "
+                            "Any running commands may still be running. </turn_aborted>"
+                        ),
+                        "images": [],
+                    },
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:02.000Z",
+                    "type": "event_msg",
+                    "payload": {"type": "user_message", "message": "Actual follow-up", "images": []},
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            messages = read_messages(path)
+
+        self.assertEqual([message.text for message in messages], ["Actual follow-up"])
 
     def test_autonomous_objective_wrapper_collapses_to_objective(self) -> None:
         prompt = autonomous_prompt("Ship a keyboard-only CLI wrapper.")
@@ -64,6 +123,68 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual([message.role for message in messages], ["user"])
         self.assertEqual(messages[0].text, "Ship a keyboard-only CLI wrapper.")
         self.assertNotIn("This is iteration", messages[0].text)
+
+    def test_user_messages_include_image_attachment_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-images", "cwd": "/tmp/project", "source": "cli"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "user_message",
+                        "message": "Describe this screen",
+                        "images": [
+                            "/tmp/project/screen.png",
+                            {"url": "file:///tmp/project/reference%20view.jpg"},
+                            {"source": "data:image/png;base64,abc"},
+                        ],
+                    },
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            messages = read_messages(path)
+
+        self.assertEqual(
+            messages[0].text,
+            "Describe this screen\n\n[Image 1] screen.png\n[Image 2] reference view.jpg\n[Image 3]",
+        )
+
+    def test_user_message_content_array_input_images_are_labeled(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-content-images", "cwd": "/tmp/project", "source": "cli"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "Describe these screens"},
+                            {"type": "input_image", "image_url": "file:///tmp/project/main%20screen.png"},
+                            {"type": "input_image", "image_url": {"url": "/tmp/project/detail.jpg"}},
+                        ],
+                    },
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            messages = read_messages(path)
+
+        self.assertEqual(
+            messages[0].text,
+            "Describe these screens\n\n[Image 1] main screen.png\n[Image 2] detail.jpg",
+        )
 
     def test_autonomous_status_updates_are_hidden_but_final_json_remains(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

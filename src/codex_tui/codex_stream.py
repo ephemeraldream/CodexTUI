@@ -5,13 +5,12 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TextIO
+from typing import Callable, Iterable, TextIO
 
 from .transcript import (
-    clean_user_text,
     looks_like_autonomous_status_update,
-    looks_like_bootstrap_context,
     text_from_payload,
+    user_text_from_payload,
 )
 
 
@@ -23,7 +22,8 @@ TOOL_OUTPUT_PREVIEW_CHARS = 1_200
 
 @dataclass
 class CodexStreamRenderer:
-    last_text: str = ""
+    seen_turn_messages: set[str] = field(default_factory=set)
+    last_lifecycle_text: str = ""
     call_labels: dict[str, str] = field(default_factory=dict)
 
     def render_line(self, line: str) -> str | None:
@@ -33,10 +33,52 @@ class CodexStreamRenderer:
         if text is None:
             return None
         stripped = text.rstrip()
-        if not stripped or stripped == self.last_text:
+        if not stripped:
             return None
-        self.last_text = stripped
+        if stripped == "[task] Codex turn started.":
+            self.seen_turn_messages.clear()
+        if is_lifecycle_stream_block(stripped):
+            if is_redundant_lifecycle_stream_block(stripped, self.last_lifecycle_text):
+                return None
+            self.last_lifecycle_text = stripped
+        else:
+            self.last_lifecycle_text = ""
+        if is_chat_stream_block(stripped):
+            if stripped in self.seen_turn_messages:
+                return None
+            self.seen_turn_messages.add(stripped)
         return stripped
+
+
+def is_chat_stream_block(text: str) -> bool:
+    return text.startswith(("YOU\n", "CODEX\n", "CODEX final\n"))
+
+
+def is_lifecycle_stream_block(text: str) -> bool:
+    if text.startswith("[context] compacted"):
+        return True
+    return text in {
+        "[task] Codex turn completed.",
+        "[task] Codex turn started.",
+    }
+
+
+def is_redundant_lifecycle_stream_block(text: str, previous: str) -> bool:
+    if text == previous:
+        return True
+    return text == "[context] compacted" and previous.startswith("[context] compacted:")
+
+
+@dataclass(frozen=True)
+class StreamToolOutputDetail:
+    rendered: str
+    detail_text: str
+
+
+@dataclass(frozen=True)
+class StreamFileChangeDetail:
+    rendered: str
+    patch_text: str
 
 
 def codex_exec_command(
@@ -44,12 +86,18 @@ def codex_exec_command(
     *,
     prompt: str | None,
     resume_id: str | None = None,
+    image_paths: Iterable[str | Path] = (),
 ) -> list[str]:
     command = [str(codex_bin), "exec"]
     if resume_id:
-        command.extend(["resume", "--json", resume_id])
+        command.extend(["resume", "--json"])
+        for image_path in image_paths:
+            command.extend(["--image", str(image_path)])
+        command.append(resume_id)
     else:
         command.append("--json")
+        for image_path in image_paths:
+            command.extend(["--image", str(image_path)])
     if prompt:
         command.append(prompt)
     return command
@@ -76,6 +124,78 @@ def parse_stream_line(
     if not isinstance(record, dict):
         return True, None
     return True, text_from_stream_record(record, call_labels=call_labels)
+
+
+def stream_record_from_line(line: str) -> dict[str, object] | None:
+    try:
+        record = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    return record if isinstance(record, dict) else None
+
+
+def tool_output_detail_from_stream_record(
+    record: dict[str, object],
+    *,
+    call_labels: dict[str, str] | None = None,
+) -> StreamToolOutputDetail | None:
+    payload = function_tool_output_payload(record)
+    if payload is None:
+        text_from_stream_record(record, call_labels=call_labels)
+        return None
+    output = stringify_output(payload.get("output")).rstrip()
+    folded = folded_tool_output(output)
+    if not output or not folded:
+        return None
+    label = call_label(payload, call_labels)
+    prefix = f"[tool output] {label}" if label else "[tool output]"
+    detail_label = label or "tool"
+    return StreamToolOutputDetail(
+        rendered=f"{prefix}: {folded}",
+        detail_text=f"{detail_label}\n{output}",
+    )
+
+
+def file_change_detail_from_stream_record(
+    record: dict[str, object],
+    *,
+    call_labels: dict[str, str] | None = None,
+) -> StreamFileChangeDetail | None:
+    payload = apply_patch_call_payload(record)
+    if payload is None:
+        return None
+    patch_text = str(payload.get("input") or "")
+    if not patch_text:
+        return None
+    return StreamFileChangeDetail(
+        rendered=render_custom_tool_call(payload, call_labels=call_labels),
+        patch_text=patch_text,
+    )
+
+
+def function_tool_output_payload(record: dict[str, object]) -> dict[str, object] | None:
+    for payload in stream_payloads(record):
+        payload_type = payload.get("type")
+        if payload_type not in {"function_call_output", "custom_tool_call_output"}:
+            continue
+        return payload
+    return None
+
+
+def apply_patch_call_payload(record: dict[str, object]) -> dict[str, object] | None:
+    for payload in stream_payloads(record):
+        if payload.get("type") == "custom_tool_call" and payload.get("name") == "apply_patch":
+            return payload
+    return None
+
+
+def stream_payloads(record: dict[str, object]) -> Iterable[dict[str, object]]:
+    payload = record.get("payload")
+    if isinstance(payload, dict):
+        yield payload
+    item = record.get("item")
+    if isinstance(item, dict):
+        yield item
 
 
 def text_from_stream_record(
@@ -112,11 +232,15 @@ def text_from_stream_record(
     if record_type == "event_msg" and payload_type == "task_complete":
         text = str(payload.get("last_agent_message") or "")
         return render_assistant_message(text, "final_answer") if text else None
-    if record_type == "response_item" and payload_type == "message" and payload.get("role") == "assistant":
-        text = text_from_payload(payload)
-        phase = str(payload.get("phase") or "")
-        if text and not looks_like_autonomous_status_update(text, phase):
-            return render_assistant_message(text, phase)
+    if record_type == "response_item" and payload_type == "message":
+        role = str(payload.get("role") or "")
+        if role == "assistant":
+            text = text_from_payload(payload)
+            phase = str(payload.get("phase") or "")
+            if text and not looks_like_autonomous_status_update(text, phase):
+                return render_assistant_message(text, phase)
+        if role == "user":
+            return render_user_message(payload)
     if record_type == "response_item":
         return text_from_response_item(payload, call_labels=call_labels)
     return None
@@ -130,17 +254,21 @@ def text_from_top_level_item(
     if not isinstance(item, dict):
         return None
     item_type = str(item.get("type") or "")
-    if item_type == "agent_message":
-        text = str(item.get("text") or "")
+    role = str(item.get("role") or "")
+    if item_type == "agent_message" or (
+        item_type == "message" and role == "assistant"
+    ):
+        text = text_from_payload(item)
         phase = str(item.get("phase") or "")
         if text and not looks_like_autonomous_status_update(text, phase):
             return render_assistant_message(text, phase)
         return None
-    if item_type == "user_message":
+    if item_type == "user_message" or (
+        item_type == "message" and role == "user"
+    ):
         return render_user_message(item)
     if item_type == "reasoning":
-        summary = reasoning_summary_text(item.get("summary"))
-        return f"[reasoning] {summary}" if summary else None
+        return render_reasoning_item(item)
     if item_type in {"function_call", "custom_tool_call", "tool_search_call", "web_search_call"}:
         return text_from_response_item(item, call_labels=call_labels)
     if item_type in {"function_call_output", "custom_tool_call_output", "tool_search_output"}:
@@ -187,10 +315,10 @@ def text_from_event_payload(
 
 
 def render_user_message(payload: dict[str, object]) -> str | None:
-    text = text_from_payload(payload)
-    if not text or looks_like_bootstrap_context(text):
+    text = user_text_from_payload(payload)
+    if not text:
         return None
-    return f"YOU\n  {compact_value(clean_user_text(text), limit=800)}"
+    return f"YOU\n  {compact_value(text, limit=800)}"
 
 
 def render_assistant_message(text: str, phase: str) -> str:
@@ -224,8 +352,7 @@ def text_from_response_item(
         action = compact_value(payload.get("action"))
         return f"[search] {action}" if action else "[search] started"
     if payload_type == "reasoning":
-        summary = reasoning_summary_text(payload.get("summary"))
-        return f"[reasoning] {summary}" if summary else None
+        return render_reasoning_item(payload)
     return None
 
 
@@ -258,7 +385,9 @@ def render_custom_tool_call(
     store_call_label(payload, call_labels, name)
     value = payload.get("input")
     if name == "apply_patch":
-        return "[tool] apply_patch"
+        path_text = patch_paths_summary(str(value or ""))
+        suffix = f": {path_text}" if path_text else ""
+        return f"[tool] apply_patch{suffix}"
     rendered_input = compact_value(parse_jsonish(value) if isinstance(value, str) else value)
     suffix = f": {rendered_input}" if rendered_input else ""
     return f"[tool] {name}{suffix}"
@@ -328,13 +457,39 @@ def render_completed_item(payload: dict[str, object]) -> str:
     if not isinstance(item, dict):
         return "[item] completed"
     item_type = str(item.get("type") or "item").strip() or "item"
+    if item_type == "reasoning":
+        return render_reasoning_item(item) or "[reasoning] completed"
     prefix = "[plan]" if item_type.casefold() == "plan" else f"[item] {item_type}"
     text = str(item.get("text") or "").strip()
     if text:
         return f"{prefix} completed\n{text}"
-    detail = compact_value(item)
+    detail = completed_item_detail(item)
     suffix = f": {detail}" if detail else ""
     return f"{prefix} completed{suffix}"
+
+
+def completed_item_detail(item: dict[str, object]) -> str:
+    parts: list[str] = []
+    name = compact_scalar(item.get("name"))
+    if name:
+        parts.append(name)
+    status = compact_scalar(item.get("status"))
+    if status and status != "completed":
+        parts.append(f"status {status}")
+    reason = compact_scalar(item.get("reason"))
+    if reason:
+        parts.append(reason)
+    return ", ".join(parts)
+
+
+def compact_scalar(value: object, *, limit: int = 120) -> str:
+    if isinstance(value, str):
+        return compact_value(value, limit=limit)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int | float):
+        return format_number(float(value))
+    return ""
 
 
 def render_thread_rollback(payload: dict[str, object]) -> str:
@@ -367,11 +522,34 @@ def render_turn_completed(record: dict[str, object]) -> str | None:
 
 def render_turn_failed(record: dict[str, object]) -> str:
     error = record.get("error")
-    if isinstance(error, dict):
-        message = compact_value(error.get("message") or error.get("detail") or error)
-    else:
-        message = compact_value(error)
+    message = turn_failure_message(error)
     return f"[task] Codex turn failed: {message}" if message else "[task] Codex turn failed."
+
+
+def turn_failure_message(error: object) -> str:
+    if not isinstance(error, dict):
+        return compact_scalar(error, limit=240)
+    for key in ("message", "detail", "error", "reason"):
+        message = compact_scalar(error.get(key), limit=240)
+        if message:
+            return message
+    parts: list[str] = []
+    for key in ("code", "type", "status", "name"):
+        value = compact_scalar(error.get(key), limit=80)
+        if value:
+            parts.append(f"{key} {value}")
+    retryable = error.get("retryable")
+    if isinstance(retryable, bool):
+        parts.append("retryable" if retryable else "not retryable")
+    if parts:
+        return ", ".join(parts)
+    for key, value in sorted(error.items()):
+        scalar = compact_scalar(value, limit=80)
+        if scalar:
+            parts.append(f"{key} {scalar}")
+        if len(parts) >= 3:
+            break
+    return ", ".join(parts)
 
 
 def render_compacted_record(payload: dict[str, object]) -> str:
@@ -379,6 +557,19 @@ def render_compacted_record(payload: dict[str, object]) -> str:
     if message:
         return f"[context] compacted: {message}"
     return "[context] compacted"
+
+
+def render_reasoning_item(payload: dict[str, object]) -> str | None:
+    summary = reasoning_summary_from_payload(payload)
+    return f"[reasoning] {summary}" if summary else None
+
+
+def reasoning_summary_from_payload(payload: dict[str, object]) -> str:
+    summary = reasoning_summary_text(payload.get("summary"))
+    if summary:
+        return summary
+    text = text_from_payload(payload)
+    return compact_value(text, limit=800) if text else ""
 
 
 def render_token_count(payload: dict[str, object]) -> str:
@@ -396,8 +587,8 @@ def render_token_count(payload: dict[str, object]) -> str:
             parts.append(f"session {format_number(session_total)}")
         context_window = number_value(info.get("model_context_window"))
         if session_total and context_window:
-            percent = session_total / context_window * 100
-            parts.append(f"context {format_number(session_total)} / {format_number(context_window)} ({format_percent(percent)})")
+            percent = format_context_percent(session_total, context_window)
+            parts.append(f"context {format_number(session_total)} / {format_number(context_window)} ({percent})")
         elif context_window:
             parts.append(f"context window {format_number(context_window)}")
     if isinstance(rate_limits, dict):
@@ -490,6 +681,33 @@ def stringify_output(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2)
 
 
+def patch_paths_summary(patch_text: str) -> str:
+    names = [Path(path).name or path for path in patch_paths_from_text(patch_text)]
+    if not names:
+        return ""
+    if len(names) <= 3:
+        return ", ".join(names)
+    return ", ".join(names[:3]) + f", +{len(names) - 3} more"
+
+
+def patch_paths_from_text(patch_text: str) -> list[str]:
+    paths: list[str] = []
+    prefixes = (
+        "*** Add File: ",
+        "*** Update File: ",
+        "*** Delete File: ",
+        "*** Move to: ",
+    )
+    for line in patch_text.splitlines():
+        for prefix in prefixes:
+            if line.startswith(prefix):
+                value = line.removeprefix(prefix).strip()
+                if value and value not in paths:
+                    paths.append(value)
+                break
+    return paths
+
+
 def folded_tool_output(text: str) -> str:
     lines = text.splitlines()
     byte_count = len(text.encode("utf-8"))
@@ -556,6 +774,14 @@ def format_percent(value: float) -> str:
     return trim_decimal(value) + "%"
 
 
+def format_context_percent(tokens: float, window: float) -> str:
+    if window <= 0:
+        return "?%"
+    if tokens > window:
+        return ">100%"
+    return format_percent(tokens / window * 100)
+
+
 def trim_decimal(value: float) -> str:
     text = f"{value:.1f}"
     return text[:-2] if text.endswith(".0") else text
@@ -583,6 +809,7 @@ def run_codex_json_stream(
     raw_json: bool = False,
     stdout: TextIO | None = None,
     stderr_to_stdout: bool = False,
+    event_callback: Callable[[dict[str, object]], None] | None = None,
 ) -> int:
     out = stdout or sys.stdout
     try:
@@ -599,6 +826,10 @@ def run_codex_json_stream(
     assert process.stdout is not None
     renderer = CodexStreamRenderer()
     for line in process.stdout:
+        if event_callback is not None:
+            record = stream_record_from_line(line)
+            if record is not None:
+                event_callback(record)
         rendered = line.rstrip("\n") if raw_json else renderer.render_line(line)
         if rendered is None:
             continue

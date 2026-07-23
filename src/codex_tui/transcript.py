@@ -6,6 +6,7 @@ import re
 import textwrap
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import unquote, urlparse
 
 from .models import ChatMessage, ThreadRow
 from .terminal_markdown import render_code_block_lines, render_markdown_lines
@@ -21,44 +22,62 @@ def read_messages(path: Path) -> list[ChatMessage]:
     task_complete_message: ChatMessage | None = None
     try:
         handle = path.open("r", encoding="utf-8")
-    except OSError:
-        return []
-    with handle:
-        for line in handle:
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            timestamp = str(record.get("timestamp") or "")
-            record_type = record.get("type")
-            payload = record.get("payload") or {}
-            if record_type == "event_msg":
-                payload_type = payload.get("type")
-                if payload_type == "user_message":
-                    text = text_from_payload(payload)
-                    if text and not looks_like_bootstrap_context(text):
-                        event_messages.append(ChatMessage(timestamp, "user", "", clean_user_text(text)))
-                elif payload_type == "agent_message":
-                    text = text_from_payload(payload)
-                    if text:
-                        phase = str(payload.get("phase") or "")
-                        if not looks_like_autonomous_status_update(text, phase):
-                            event_messages.append(ChatMessage(timestamp, "assistant", phase, text))
-                elif payload_type == "task_complete":
-                    text = str(payload.get("last_agent_message") or "")
-                    if text:
-                        task_complete_message = ChatMessage(timestamp, "assistant", "final_answer", text)
-            elif record_type == "response_item" and payload.get("type") == "message":
-                role = str(payload.get("role") or "")
-                text = text_from_payload(payload)
-                if not text:
+        with handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
                     continue
-                phase = str(payload.get("phase") or "")
-                if role == "assistant":
-                    if not looks_like_autonomous_status_update(text, phase):
-                        fallback_assistant.append(ChatMessage(timestamp, "assistant", phase, text))
-                elif role == "user" and not looks_like_bootstrap_context(text):
-                    fallback_user.append(ChatMessage(timestamp, "user", phase, clean_user_text(text)))
+                timestamp = str(record.get("timestamp") or "")
+                record_type = record.get("type")
+                payload = record.get("payload") or {}
+                if record_type == "event_msg":
+                    payload_type = payload.get("type")
+                    if payload_type == "user_message":
+                        text = user_text_from_payload(payload)
+                        if text:
+                            event_messages.append(ChatMessage(timestamp, "user", "", text))
+                    elif payload_type == "agent_message":
+                        text = text_from_payload(payload)
+                        if text:
+                            phase = str(payload.get("phase") or "")
+                            if not looks_like_autonomous_status_update(text, phase):
+                                event_messages.append(ChatMessage(timestamp, "assistant", phase, text))
+                    elif payload_type == "task_complete":
+                        text = str(payload.get("last_agent_message") or "")
+                        if text:
+                            task_complete_message = ChatMessage(timestamp, "assistant", "final_answer", text)
+                elif record_type == "response_item" and payload.get("type") == "message":
+                    role = str(payload.get("role") or "")
+                    text = text_from_payload(payload)
+                    phase = str(payload.get("phase") or "")
+                    if role == "assistant":
+                        if not text:
+                            continue
+                        if not looks_like_autonomous_status_update(text, phase):
+                            fallback_assistant.append(ChatMessage(timestamp, "assistant", phase, text))
+                    elif role == "user":
+                        display_text = user_text_from_payload(payload)
+                        if display_text:
+                            fallback_user.append(ChatMessage(timestamp, "user", phase, display_text))
+                elif record_type == "item.completed":
+                    item = record.get("item") or {}
+                    if not isinstance(item, dict):
+                        continue
+                    item_type = str(item.get("type") or "")
+                    role = str(item.get("role") or "")
+                    if item_type == "agent_message" or (item_type == "message" and role == "assistant"):
+                        text = text_from_payload(item)
+                        phase = str(item.get("phase") or "")
+                        if text and not looks_like_autonomous_status_update(text, phase):
+                            fallback_assistant.append(ChatMessage(timestamp, "assistant", phase, text))
+                    elif item_type == "user_message" or (item_type == "message" and role == "user"):
+                        text = user_text_from_payload(item)
+                        phase = str(item.get("phase") or "")
+                        if text:
+                            fallback_user.append(ChatMessage(timestamp, "user", phase, text))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return []
     has_event_assistant = any(message.role == "assistant" for message in event_messages)
     has_event_user = any(message.role == "user" for message in event_messages)
     messages: list[ChatMessage] = []
@@ -101,9 +120,82 @@ def text_from_payload(payload: dict[str, object]) -> str:
     return ""
 
 
+def user_text_from_payload(payload: dict[str, object]) -> str:
+    text = text_from_payload(payload)
+    if text and looks_like_bootstrap_context(text):
+        return ""
+    text = clean_user_text(text) if text else ""
+    images = image_attachment_text(payload)
+    if text and images:
+        return f"{text}\n\n{images}"
+    return text or images
+
+
+def image_attachment_text(payload: dict[str, object]) -> str:
+    images = list(image_attachment_values(payload))
+    labels = [image_attachment_label(image, index) for index, image in enumerate(images, start=1)]
+    return "\n".join(label for label in labels if label)
+
+
+def image_attachment_values(payload: dict[str, object]) -> Iterable[object]:
+    images = payload.get("images")
+    if isinstance(images, list):
+        yield from images
+    content = payload.get("content")
+    if not isinstance(content, list):
+        return
+    for item in content:
+        if isinstance(item, dict) and content_item_is_image(item):
+            yield item
+
+
+def content_item_is_image(item: dict[str, object]) -> bool:
+    item_type = str(item.get("type") or "")
+    return item_type in {"input_image", "image", "image_url"} or "image_url" in item
+
+
+def image_attachment_label(image: object, index: int) -> str:
+    name = image_attachment_name(image)
+    suffix = f" {name}" if name else ""
+    return f"[Image {index}]{suffix}"
+
+
+def image_attachment_name(image: object) -> str:
+    if isinstance(image, str):
+        return image_name_from_value(image)
+    if isinstance(image, dict):
+        for key in ("path", "file", "filename", "name", "source", "url", "image_url"):
+            value = image.get(key)
+            if isinstance(value, str):
+                name = image_name_from_value(value)
+                if name:
+                    return name
+            if isinstance(value, dict):
+                name = image_attachment_name(value)
+                if name:
+                    return name
+    return ""
+
+
+def image_name_from_value(value: str) -> str:
+    stripped = value.strip()
+    if not stripped or stripped.startswith("data:"):
+        return ""
+    parsed = urlparse(stripped)
+    raw_path = parsed.path if parsed.scheme else stripped
+    name = Path(unquote(raw_path)).name
+    if name and len(name) <= 120:
+        return name
+    return ""
+
+
 def looks_like_bootstrap_context(text: str) -> bool:
     stripped = text.lstrip()
-    return stripped.startswith("# AGENTS.md instructions") or "<environment_context>" in stripped
+    return (
+        stripped.startswith("# AGENTS.md instructions")
+        or stripped.startswith("<turn_aborted>")
+        or "<environment_context>" in stripped
+    )
 
 
 def looks_like_autonomous_status_update(text: str, phase: str) -> bool:

@@ -1,6 +1,6 @@
 # VSCode-Like Renderer Plan
 
-This plan defines the path from the current clean stream renderer to a polished Codex VSCode plugin-like terminal conversation renderer.
+This plan defines the path from the current renderer work to a polished Codex VSCode plugin-like terminal conversation renderer.
 The goal is not to copy VSCode UI pixel for pixel.
 The goal is to bring the same information hierarchy, readability, and confidence to a terminal-first experience.
 
@@ -26,18 +26,17 @@ Errors should be prominent, short, and actionable.
 Do not implement a browser UI in this phase.
 Do not rewrite Codex history files.
 Do not depend on private Codex backend APIs.
-Do not make curses layout code parse raw Codex event schemas.
+Do not make terminal layout code parse raw Codex event schemas.
 Do not make the default renderer show raw JSON for unsupported events.
 
 ## Current Problems
 
-The stream renderer is event-aware but presentation-light.
-The TUI renders line arrays rather than structured blocks.
-Markdown is wrapped as plain text.
-Tool calls and outputs do not have consistent grouping.
-There is no shared renderer model between historical transcripts and live streams.
+The default Textual TUI now renders historical transcripts as structured `TranscriptBlock` panels with Rich Markdown.
+The legacy curses TUI still renders line arrays.
+Historical transcript blocks and live stream blocks are visually closer, but they are not yet normalized through one typed event model.
+Tool calls and outputs are grouped enough for folded output and patch expansion, but the grouping is still split between stream parsing and transcript block construction.
 There is no snapshot harness for comparing visual output between changes.
-There is limited coverage for terminal wrapping, code fences, and folding behavior.
+There is unit coverage for Textual behavior, code fences, wrapping, and folding, but no golden visual renderer snapshots.
 
 ## Design Principles
 
@@ -101,7 +100,8 @@ It should mark large tool output as folded by default.
 ### Layer 3: Markdown-Aware Text Layout
 
 Create a `src/codex_tui/terminal_markdown.py` module.
-Support a conservative subset first:
+The default Textual TUI currently uses Rich Markdown for transcript panels.
+Any shared terminal Markdown path should support a conservative subset first:
 
 - paragraphs
 - bullet lists
@@ -111,8 +111,7 @@ Support a conservative subset first:
 - block quotes
 - horizontal separators
 
-Do not add a heavy dependency in the first pass.
-Implement deterministic parsing and wrapping with standard-library code unless a later review proves a dependency is worth it.
+Keep deterministic parsing and wrapping available for CLI and snapshot tests.
 Preserve code fence indentation.
 Wrap prose to terminal width.
 Do not wrap code by default unless the line exceeds a hard safety width.
@@ -140,7 +139,9 @@ Keep color optional and never encode meaning only through color.
 
 ### Layer 5: TUI Integration
 
-Keep `tui.py` responsible for layout, focus, scrolling, input, and pane lifecycle.
+Keep terminal app modules responsible for layout, focus, scrolling, input, and pane lifecycle.
+The default TUI lives in `tui_textual.py`.
+The legacy curses runner remains in `tui.py` behind `run_curses_tui`.
 Move transcript formatting out of `tui.py`.
 Make preview rendering call a shared block renderer.
 Make live stream rendering append blocks instead of appending raw strings.
@@ -174,18 +175,10 @@ The final-answer view should preserve structured JSON answers as pretty JSON ins
 
 ## Keyboard Interaction
 
-The first renderer phase can remain keyboard-only.
-Recommended interactions:
-
-- `Tab` switches panes.
-- Arrow keys scroll the focused pane.
-- `PageUp` and `PageDown` scroll by viewport.
-- `o` opens file-reference preview.
-- `t` toggles tool output folding in the active preview.
-- `m` cycles markdown detail level if needed.
-- `d` toggles debug event details when a debug mode is enabled.
-
-Do not add new keys until they are visible in the footer and tested.
+The first renderer phase remains keyboard-only.
+`README.md` owns the current user-visible TUI key map.
+Renderer-specific keys must stay visible in the footer and covered by tests.
+The current expandable-block contract is that `Enter` or `t` toggles the selected expandable block, and `Ctrl-j`, `Ctrl-k`, `Alt-j`, or `Alt-k` scroll inside the selected long block.
 
 ## Test Strategy
 
@@ -256,7 +249,7 @@ Exit criteria:
 Group tool call and output events by call id.
 Fold long outputs by default.
 Show patch, search, MCP, token, and compaction events as status blocks.
-Add keyboard toggle support in the TUI for folded tool blocks.
+Preserve keyboard toggle support in the TUI for folded tool blocks.
 
 Exit criteria:
 
@@ -301,7 +294,7 @@ Renderer behavior must be covered by unit tests and at least one real-stream smo
 
 ## Open Questions
 
-Should the first polished renderer remain curses-only or introduce a richer terminal UI library later?
+How much of the legacy curses TUI should remain once the Textual path settles?
 Should folded tool blocks persist state per session while the TUI is open?
 Should historical transcript rendering expose debug-only raw event inspection?
 How close should colors match the Codex VSCode plugin when terminal themes vary heavily?

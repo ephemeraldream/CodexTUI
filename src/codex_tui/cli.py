@@ -36,11 +36,11 @@ def normalize_argv(argv: list[str]) -> list[str]:
     if argv and argv[0] == "h":
         argv = ["browse", *argv[1:]]
     elif argv and argv[0] == "history":
-        argv = argv[1:]
+        argv = ["browse", *argv[1:]]
     if argv and argv[0] in {"-h", "--help", "--version"}:
         return argv
     if not argv or argv[0].startswith("-"):
-        argv = ["browse", *argv]
+        argv = ["tui", *argv]
     return argv
 
 
@@ -153,6 +153,7 @@ def build_parser() -> argparse.ArgumentParser:
     stream_p = sub.add_parser("stream", aliases=["ask"], help="run Codex exec through a CodexTUI JSON stream")
     stream_p.add_argument("--resume", metavar="SELECTOR", help="resume a session through codex exec resume")
     add_cwd_scope(stream_p)
+    stream_p.add_argument("--image", action="append", default=[], help="attach an image path to the Codex prompt")
     stream_p.add_argument("--raw-json", action="store_true", help="print raw Codex JSONL events")
     stream_p.add_argument("prompt", nargs=argparse.REMAINDER, help="prompt words, or omit to read piped stdin")
     stream_p.set_defaults(func=stream_codex)
@@ -426,12 +427,20 @@ def stream_codex(args: argparse.Namespace) -> int:
     if (not prompt or prompt == "-") and sys.stdin.isatty():
         print("ctui stream needs a prompt or piped stdin.", file=sys.stderr)
         return 2
+    image_paths = stream_image_paths(getattr(args, "image", ()))
+    if image_paths is None:
+        return 2
     resume_id = None
     if args.resume:
         resume_id = CodexStore().resolve_thread(args.resume, cwd=cwd_filter(args)).id
         if prompt is None:
             prompt = "-"
-    command = codex_exec_command(real_codex_bin(), prompt=prompt, resume_id=resume_id)
+    command = codex_exec_command(
+        real_codex_bin(),
+        prompt=prompt,
+        resume_id=resume_id,
+        image_paths=image_paths,
+    )
     return run_codex_json_stream(command, raw_json=args.raw_json)
 
 
@@ -440,6 +449,17 @@ def joined_prompt(parts: list[str]) -> str | None:
         parts = parts[1:]
     prompt = " ".join(parts).strip()
     return prompt or None
+
+
+def stream_image_paths(paths: list[str] | tuple[str, ...]) -> tuple[str, ...] | None:
+    image_paths: list[str] = []
+    for raw_path in paths:
+        image_path = Path(raw_path).expanduser().resolve(strict=False)
+        if not image_path.is_file():
+            print(f"ctui stream: image not found: {image_path}", file=sys.stderr)
+            return None
+        image_paths.append(str(image_path))
+    return tuple(image_paths)
 
 
 def handle_session_selection(selection: PickerSelection, *, mode: str) -> int:

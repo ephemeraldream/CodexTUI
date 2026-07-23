@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import __version__
 from .paths import codex_home, real_codex_bin
-from .store import CodexStore
+from .store import CodexStore, thread_rollout_readable
 
 
 @dataclass(frozen=True)
@@ -123,15 +123,31 @@ def check_codex_state() -> DiagnosticCheck:
     home = codex_home()
     dbs = sorted(home.glob("state_*.sqlite"))
     sessions = home / "sessions"
+    try:
+        threads = CodexStore(home).load_threads(limit=None if dbs else 1)
+    except Exception as exc:  # pragma: no cover - defensive against third party state files
+        return DiagnosticCheck("codex history", "warn", f"unable to scan local Codex history under {home}: {exc}")
+    if dbs and threads and all(not thread_rollout_readable(thread) for thread in threads):
+        return DiagnosticCheck(
+            "codex history",
+            "warn",
+            f"found {len(dbs)} state database(s) in {home} but no readable sessions were found",
+        )
+    if threads:
+        if dbs:
+            return DiagnosticCheck(
+                "codex history",
+                "ok",
+                f"loaded recent history with {len(dbs)} state database(s) present in {home}",
+            )
+        return DiagnosticCheck("codex history", "ok", f"found session files in {sessions}")
     if dbs:
-        return DiagnosticCheck("codex history", "ok", f"found {len(dbs)} state database(s) in {home}")
+        return DiagnosticCheck(
+            "codex history",
+            "warn",
+            f"found {len(dbs)} state database(s) in {home} but no readable sessions were found",
+        )
     if sessions.exists():
-        try:
-            thread_count = len(CodexStore(home).load_threads(limit=1))
-        except Exception as exc:  # pragma: no cover - defensive against third party state files
-            return DiagnosticCheck("codex history", "warn", f"unable to scan {sessions}: {exc}")
-        if thread_count:
-            return DiagnosticCheck("codex history", "ok", f"found session files in {sessions}")
         return DiagnosticCheck("codex history", "warn", f"{sessions} exists but no sessions were found")
     return DiagnosticCheck(
         "codex history",

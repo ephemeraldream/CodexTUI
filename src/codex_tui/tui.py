@@ -518,6 +518,27 @@ def run_tui(
     cwd: str | None = None,
     raw_json: bool = False,
 ) -> int:
+    from .tui_textual import run_textual_tui
+
+    return run_textual_tui(
+        include_archived=include_archived,
+        limit=limit,
+        query=query,
+        source=source,
+        cwd=cwd,
+        raw_json=raw_json,
+    )
+
+
+def run_curses_tui(
+    *,
+    include_archived: bool = False,
+    limit: int | None = 80,
+    query: str | None = None,
+    source: str | None = None,
+    cwd: str | None = None,
+    raw_json: bool = False,
+) -> int:
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         print("ctui tui needs an interactive terminal.", file=sys.stderr)
         return 2

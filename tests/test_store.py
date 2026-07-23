@@ -29,6 +29,30 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(threads[0].cwd, "/tmp/project")
         self.assertEqual(threads[0].source, "cli")
 
+    def test_sqlite_schema_error_falls_back_to_session_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            db_path = home / "state_5.sqlite"
+            con = sqlite3.connect(db_path)
+            try:
+                con.execute("CREATE TABLE unrelated (id TEXT)")
+                con.commit()
+            finally:
+                con.close()
+            write_session(
+                home,
+                "sessions",
+                "019f-test-basic",
+                cwd="/tmp/project",
+                source="cli",
+                user_message="Fallback session",
+            )
+
+            threads = CodexStore(home).load_threads()
+
+        self.assertEqual([thread.id for thread in threads], ["019f-test-basic"])
+        self.assertEqual(threads[0].first_user_message, "Fallback session")
+
     def test_scan_threads_from_files_applies_filters_before_limit(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
@@ -102,6 +126,64 @@ class StoreTests(unittest.TestCase):
 
         self.assertEqual(thread.id, "019f-test-project")
         self.assertEqual(thread.first_user_message, "Project older session")
+
+    def test_resolve_thread_accepts_rollout_session_id_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            rollout = write_session(
+                home,
+                "sessions",
+                "019f-test-jsonl-alias",
+                cwd="/tmp/project",
+                source="cli",
+                user_message="Shared rollout alias",
+            )
+            db_path = home / "state_5.sqlite"
+            con = sqlite3.connect(db_path)
+            try:
+                con.execute(
+                    """
+                    CREATE TABLE threads (
+                        id TEXT,
+                        title TEXT,
+                        cwd TEXT,
+                        source TEXT,
+                        archived INTEGER,
+                        rollout_path TEXT,
+                        created_at_ms INTEGER,
+                        updated_at_ms INTEGER,
+                        recency_at_ms INTEGER,
+                        preview TEXT,
+                        first_user_message TEXT
+                    )
+                    """
+                )
+                con.execute(
+                    """
+                    INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "019f-test-db-alias",
+                        "Database id for shared rollout",
+                        "/tmp/project",
+                        "cli",
+                        0,
+                        str(rollout),
+                        1783677600000,
+                        1783677605000,
+                        1783677605000,
+                        "",
+                        "Database id for shared rollout",
+                    ),
+                )
+                con.commit()
+            finally:
+                con.close()
+
+            thread = CodexStore(home).resolve_thread("019f-test-jsonl-alias")
+
+        self.assertEqual(thread.id, "019f-test-db-alias")
+        self.assertEqual(thread.rollout_path, str(rollout))
 
     def test_cwd_filter_uses_path_boundaries_for_path_filters(self) -> None:
         self.assertTrue(cwd_matches_filter("/tmp/project/src", "/tmp/project"))
