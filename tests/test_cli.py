@@ -565,6 +565,70 @@ class CliTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], ["019f-test-readable-state-five"])
         self.assertEqual(rows[0]["title"], "Readable older state session")
 
+    def test_list_merges_session_fallback_with_readable_older_state_database(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            scanned_rollout = write_cli_session(
+                home,
+                "019f-test-scanned-session",
+                cwd="/tmp/project",
+                user_message="Readable scanned session",
+            )
+            legacy_rollout = home / "legacy-rollouts" / "state-five.jsonl"
+            write_session_file(
+                legacy_rollout,
+                "019f-test-readable-state-five",
+                cwd="/tmp/project",
+                user_message="Readable older state session",
+            )
+            os.utime(scanned_rollout, (300, 300))
+            os.utime(legacy_rollout, (200, 200))
+            write_threads_db_row(
+                home,
+                session_id="019f-test-stale-state-six",
+                cwd="/tmp/project",
+                source="cli",
+                rollout_path=str(home / "missing-rollout.jsonl"),
+                title="Stale newer state session",
+                preview="",
+                first_user_message="Stale newer state session",
+                db_name="state_6.sqlite",
+                recency_at_ms=1783677607000,
+            )
+            write_threads_db_row(
+                home,
+                session_id="019f-test-readable-state-five",
+                cwd="/tmp/project",
+                source="cli",
+                rollout_path=str(legacy_rollout),
+                title="Readable older state session",
+                preview="",
+                first_user_message="Readable older state session",
+                db_name="state_5.sqlite",
+                recency_at_ms=1783677606000,
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json", "--limit", "2"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(
+            [row["id"] for row in rows],
+            ["019f-test-readable-state-five", "019f-test-scanned-session"],
+        )
+        self.assertEqual(rows[0]["title"], "Readable older state session")
+        self.assertEqual(rows[1]["title"], "Readable scanned session")
+
     def test_list_skips_limited_stale_row_when_same_state_database_has_readable_history(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)

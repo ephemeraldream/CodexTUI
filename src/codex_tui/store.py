@@ -3,11 +3,18 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
 
 from .models import ThreadRow
 from .paths import codex_home
 from .transcript import clean_metadata_text, one_line, read_messages
+
+
+@dataclass(frozen=True)
+class StateDbLoadResult:
+    threads: list[ThreadRow]
+    has_readable_state_threads: bool
 
 
 class CodexStore:
@@ -33,8 +40,9 @@ class CodexStore:
             "cwd": cwd,
         }
         db_paths = self.state_db_paths()
+        deferred_readable_threads: list[ThreadRow] = []
         for index, db_path in enumerate(db_paths):
-            threads = self._load_threads_from_state_db(
+            result = self._load_threads_from_state_db(
                 db_path,
                 include_archived=include_archived,
                 limit=limit,
@@ -42,12 +50,23 @@ class CodexStore:
                 source=source,
                 cwd=cwd,
             )
-            if threads is not None:
-                if index < len(db_paths) - 1 and all(
-                    not thread_rollout_readable(thread) for thread in threads
-                ):
+            if result is not None:
+                if index < len(db_paths) - 1 and not result.has_readable_state_threads:
+                    deferred_readable_threads = merge_thread_lists(
+                        deferred_readable_threads,
+                        [thread for thread in result.threads if thread_rollout_readable(thread)],
+                    )
                     continue
+                threads = result.threads
+                if deferred_readable_threads:
+                    threads = merge_thread_lists(threads, deferred_readable_threads)
+                    if limit is not None and limit >= 0:
+                        threads = threads[:limit]
                 return threads
+        if deferred_readable_threads:
+            if limit is not None and limit >= 0:
+                return deferred_readable_threads[:limit]
+            return deferred_readable_threads
         return self.scan_threads_from_files(**fallback_kwargs)
 
     def _load_threads_from_state_db(
@@ -59,7 +78,7 @@ class CodexStore:
         query: str | None,
         source: str | None,
         cwd: str | None,
-    ) -> list[ThreadRow] | None:
+    ) -> StateDbLoadResult | None:
         con = self.open_state_db(db_path)
         if con is None:
             return None
@@ -107,9 +126,9 @@ class CodexStore:
                 for thread in threads
                 if thread_matches_filters(thread, query=query, source=None, cwd=cwd)
             ]
+        readable_threads = [thread for thread in threads if thread_rollout_readable(thread)]
         merged_with_fallback = False
         if db_has_unreadable_rollout:
-            readable_threads = [thread for thread in threads if thread_rollout_readable(thread)]
             fallback_threads = self.scan_threads_from_files(
                 include_archived=include_archived,
                 limit=None,
@@ -127,7 +146,7 @@ class CodexStore:
             needs_python_filter or merged_with_fallback or reloaded_without_sql_limit
         ):
             threads = threads[:limit]
-        return threads
+        return StateDbLoadResult(threads=threads, has_readable_state_threads=bool(readable_threads))
 
     def resolve_thread(
         self,
