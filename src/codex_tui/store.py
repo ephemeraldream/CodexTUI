@@ -605,7 +605,7 @@ def read_session_meta(path: Path) -> dict[str, str]:
                     continue
                 payload = record.get("payload") or {}
                 return {str(k): str(v) for k, v in payload.items() if isinstance(v, (str, int))}
-    except (OSError, ValueError):
+    except (OSError, UnicodeDecodeError, ValueError):
         return {}
     return {}
 

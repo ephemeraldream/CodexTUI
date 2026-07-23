@@ -22,62 +22,62 @@ def read_messages(path: Path) -> list[ChatMessage]:
     task_complete_message: ChatMessage | None = None
     try:
         handle = path.open("r", encoding="utf-8")
-    except (OSError, ValueError):
-        return []
-    with handle:
-        for line in handle:
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            timestamp = str(record.get("timestamp") or "")
-            record_type = record.get("type")
-            payload = record.get("payload") or {}
-            if record_type == "event_msg":
-                payload_type = payload.get("type")
-                if payload_type == "user_message":
-                    text = user_text_from_payload(payload)
-                    if text:
-                        event_messages.append(ChatMessage(timestamp, "user", "", text))
-                elif payload_type == "agent_message":
-                    text = text_from_payload(payload)
-                    if text:
-                        phase = str(payload.get("phase") or "")
-                        if not looks_like_autonomous_status_update(text, phase):
-                            event_messages.append(ChatMessage(timestamp, "assistant", phase, text))
-                elif payload_type == "task_complete":
-                    text = str(payload.get("last_agent_message") or "")
-                    if text:
-                        task_complete_message = ChatMessage(timestamp, "assistant", "final_answer", text)
-            elif record_type == "response_item" and payload.get("type") == "message":
-                role = str(payload.get("role") or "")
-                text = text_from_payload(payload)
-                phase = str(payload.get("phase") or "")
-                if role == "assistant":
-                    if not text:
-                        continue
-                    if not looks_like_autonomous_status_update(text, phase):
-                        fallback_assistant.append(ChatMessage(timestamp, "assistant", phase, text))
-                elif role == "user":
-                    display_text = user_text_from_payload(payload)
-                    if display_text:
-                        fallback_user.append(ChatMessage(timestamp, "user", phase, display_text))
-            elif record_type == "item.completed":
-                item = record.get("item") or {}
-                if not isinstance(item, dict):
+        with handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
                     continue
-                item_type = str(item.get("type") or "")
-                role = str(item.get("role") or "")
-                if item_type == "agent_message" or (item_type == "message" and role == "assistant"):
-                    text = text_from_payload(item)
-                    phase = str(item.get("phase") or "")
-                    if text and not looks_like_autonomous_status_update(text, phase):
-                        fallback_assistant.append(ChatMessage(timestamp, "assistant", phase, text))
-                elif item_type == "user_message" or (item_type == "message" and role == "user"):
-                    text = user_text_from_payload(item)
-                    phase = str(item.get("phase") or "")
-                    if text:
-                        fallback_user.append(ChatMessage(timestamp, "user", phase, text))
+                timestamp = str(record.get("timestamp") or "")
+                record_type = record.get("type")
+                payload = record.get("payload") or {}
+                if record_type == "event_msg":
+                    payload_type = payload.get("type")
+                    if payload_type == "user_message":
+                        text = user_text_from_payload(payload)
+                        if text:
+                            event_messages.append(ChatMessage(timestamp, "user", "", text))
+                    elif payload_type == "agent_message":
+                        text = text_from_payload(payload)
+                        if text:
+                            phase = str(payload.get("phase") or "")
+                            if not looks_like_autonomous_status_update(text, phase):
+                                event_messages.append(ChatMessage(timestamp, "assistant", phase, text))
+                    elif payload_type == "task_complete":
+                        text = str(payload.get("last_agent_message") or "")
+                        if text:
+                            task_complete_message = ChatMessage(timestamp, "assistant", "final_answer", text)
+                elif record_type == "response_item" and payload.get("type") == "message":
+                    role = str(payload.get("role") or "")
+                    text = text_from_payload(payload)
+                    phase = str(payload.get("phase") or "")
+                    if role == "assistant":
+                        if not text:
+                            continue
+                        if not looks_like_autonomous_status_update(text, phase):
+                            fallback_assistant.append(ChatMessage(timestamp, "assistant", phase, text))
+                    elif role == "user":
+                        display_text = user_text_from_payload(payload)
+                        if display_text:
+                            fallback_user.append(ChatMessage(timestamp, "user", phase, display_text))
+                elif record_type == "item.completed":
+                    item = record.get("item") or {}
+                    if not isinstance(item, dict):
+                        continue
+                    item_type = str(item.get("type") or "")
+                    role = str(item.get("role") or "")
+                    if item_type == "agent_message" or (item_type == "message" and role == "assistant"):
+                        text = text_from_payload(item)
+                        phase = str(item.get("phase") or "")
+                        if text and not looks_like_autonomous_status_update(text, phase):
+                            fallback_assistant.append(ChatMessage(timestamp, "assistant", phase, text))
+                    elif item_type == "user_message" or (item_type == "message" and role == "user"):
+                        text = user_text_from_payload(item)
+                        phase = str(item.get("phase") or "")
+                        if text:
+                            fallback_user.append(ChatMessage(timestamp, "user", phase, text))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return []
     has_event_assistant = any(message.role == "assistant" for message in event_messages)
     has_event_user = any(message.role == "user" for message in event_messages)
     messages: list[ChatMessage] = []

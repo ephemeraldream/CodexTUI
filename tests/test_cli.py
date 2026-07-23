@@ -425,6 +425,45 @@ class CliTests(unittest.TestCase):
         rows = [json.loads(line) for line in result.stdout.splitlines()]
         self.assertEqual([row["id"] for row in rows], ["019f-test-broken-state-link"])
 
+    def test_list_skips_corrupt_utf8_session_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            corrupt_dir = home / "sessions" / "2026" / "07" / "10"
+            corrupt_dir.mkdir(parents=True)
+            (corrupt_dir / "rollout-2026-07-10T09-00-00-019f-test-corrupt.jsonl").write_bytes(
+                b"\xff\xfe\x00bad\n"
+            )
+            write_cli_session(
+                home,
+                "019f-test-valid-after-corrupt",
+                cwd="/tmp/project",
+                user_message="Valid session after corrupt file",
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "codex_tui",
+                    "list",
+                    "--json",
+                    "-q",
+                    "Valid session after corrupt file",
+                ],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-valid-after-corrupt"])
+
     def test_list_merges_newer_unindexed_session_file_with_readable_sqlite_history(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
