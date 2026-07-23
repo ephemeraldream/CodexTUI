@@ -36,6 +36,33 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual(messages[0].text, "Run the autonomous iteration")
         self.assertEqual(messages[1].text, '{"success": true}')
 
+    def test_top_level_completed_messages_are_read_as_fallback_history(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "rollout.jsonl"
+            records = [
+                {
+                    "timestamp": "2026-07-10T12:00:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": "019f-test-items", "cwd": "/tmp/project", "source": "cli"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:01.000Z",
+                    "type": "item.completed",
+                    "item": {"id": "item_0", "type": "user_message", "text": "Top-level request"},
+                },
+                {
+                    "timestamp": "2026-07-10T12:00:02.000Z",
+                    "type": "item.completed",
+                    "item": {"id": "item_1", "type": "agent_message", "text": "Top-level reply."},
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            messages = read_messages(path)
+
+        self.assertEqual([message.role for message in messages], ["user", "assistant"])
+        self.assertEqual(messages[0].text, "Top-level request")
+        self.assertEqual(messages[1].text, "Top-level reply.")
+
     def test_event_user_messages_skip_bootstrap_context(self) -> None:
         messages = read_messages(FIXTURES / "rollout-event-bootstrap.jsonl")
         self.assertEqual([message.role for message in messages], ["user", "assistant"])

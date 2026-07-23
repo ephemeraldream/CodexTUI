@@ -59,6 +59,22 @@ def read_messages(path: Path) -> list[ChatMessage]:
                         fallback_assistant.append(ChatMessage(timestamp, "assistant", phase, text))
                 elif role == "user" and not looks_like_bootstrap_context(text):
                     fallback_user.append(ChatMessage(timestamp, "user", phase, clean_user_text(text)))
+            elif record_type == "item.completed":
+                item = record.get("item") or {}
+                if not isinstance(item, dict):
+                    continue
+                item_type = str(item.get("type") or "")
+                role = str(item.get("role") or "")
+                if item_type == "agent_message" or (item_type == "message" and role == "assistant"):
+                    text = text_from_payload(item)
+                    phase = str(item.get("phase") or "")
+                    if text and not looks_like_autonomous_status_update(text, phase):
+                        fallback_assistant.append(ChatMessage(timestamp, "assistant", phase, text))
+                elif item_type == "user_message" or (item_type == "message" and role == "user"):
+                    text = text_from_payload(item)
+                    phase = str(item.get("phase") or "")
+                    if text and not looks_like_bootstrap_context(text):
+                        fallback_user.append(ChatMessage(timestamp, "user", phase, clean_user_text(text)))
     has_event_assistant = any(message.role == "assistant" for message in event_messages)
     has_event_user = any(message.role == "user" for message in event_messages)
     messages: list[ChatMessage] = []
