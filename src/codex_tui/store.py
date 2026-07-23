@@ -32,12 +32,32 @@ class CodexStore:
             "source": source,
             "cwd": cwd,
         }
-        db_path = self.state_db_path()
-        if db_path is None:
-            return self.scan_threads_from_files(**fallback_kwargs)
+        for db_path in self.state_db_paths():
+            threads = self._load_threads_from_state_db(
+                db_path,
+                include_archived=include_archived,
+                limit=limit,
+                query=query,
+                source=source,
+                cwd=cwd,
+            )
+            if threads is not None:
+                return threads
+        return self.scan_threads_from_files(**fallback_kwargs)
+
+    def _load_threads_from_state_db(
+        self,
+        db_path: Path,
+        *,
+        include_archived: bool,
+        limit: int | None,
+        query: str | None,
+        source: str | None,
+        cwd: str | None,
+    ) -> list[ThreadRow] | None:
         con = self.open_state_db(db_path)
         if con is None:
-            return self.scan_threads_from_files(**fallback_kwargs)
+            return None
         clauses: list[str] = []
         params: list[object] = []
         if not include_archived:
@@ -60,11 +80,11 @@ class CodexStore:
         try:
             rows = con.execute(sql, params).fetchall()
         except sqlite3.Error:
-            return self.scan_threads_from_files(**fallback_kwargs)
+            return None
         finally:
             con.close()
         if not rows:
-            return self.scan_threads_from_files(**fallback_kwargs)
+            return None
         db_threads = [thread_from_state_row(row) for row in rows]
         db_has_unreadable_rollout = any(not thread_rollout_readable(thread) for thread in db_threads)
         threads = db_threads
@@ -129,11 +149,12 @@ class CodexStore:
         raise LookupError(f"Session not found: {selector}")
 
     def state_db_path(self) -> Path | None:
-        preferred = self.home / "state_5.sqlite"
-        if preferred.exists():
-            return preferred
-        candidates = sorted(self.home.glob("state_*.sqlite"), key=lambda path: path.stat().st_mtime, reverse=True)
-        return candidates[0] if candidates else None
+        paths = self.state_db_paths()
+        return paths[0] if paths else None
+
+    def state_db_paths(self) -> list[Path]:
+        candidates = list(self.home.glob("state_*.sqlite"))
+        return sorted(candidates, key=state_db_sort_key, reverse=True)
 
     @staticmethod
     def open_state_db(path: Path) -> sqlite3.Connection | None:
@@ -201,6 +222,12 @@ def safe_ms(value: object) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def state_db_sort_key(path: Path) -> tuple[int, float, str]:
+    match = re.fullmatch(r"state_(\d+)\.sqlite", path.name)
+    version = int(match.group(1)) if match else -1
+    return (version, path.stat().st_mtime, path.name)
 
 
 def thread_from_state_row(row: sqlite3.Row) -> ThreadRow:

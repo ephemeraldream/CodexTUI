@@ -460,6 +460,61 @@ class CliTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], ["019f-test-filtered-file"])
         self.assertEqual(rows[0]["title"], "Readable filtered session")
 
+    def test_list_uses_newer_state_database_when_state_five_is_readable(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            old_rollout = write_cli_session(
+                home,
+                "019f-test-state-five",
+                cwd="/tmp/project",
+                user_message="Older state five session",
+            )
+            new_rollout = write_cli_session(
+                home,
+                "019f-test-state-six",
+                cwd="/tmp/project",
+                user_message="Newer state six session",
+            )
+            write_threads_db_row(
+                home,
+                session_id="019f-test-state-five",
+                cwd="/tmp/project",
+                source="cli",
+                rollout_path=str(old_rollout),
+                title="Older state five session",
+                preview="",
+                first_user_message="Older state five session",
+                db_name="state_5.sqlite",
+            )
+            write_threads_db_row(
+                home,
+                session_id="019f-test-state-six",
+                cwd="/tmp/project",
+                source="cli",
+                rollout_path=str(new_rollout),
+                title="Newer state six session",
+                preview="",
+                first_user_message="Newer state six session",
+                db_name="state_6.sqlite",
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json", "--limit", "1"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-state-six"])
+        self.assertEqual(rows[0]["title"], "Newer state six session")
+
     def test_single_session_commands_here_resolve_last_in_current_git_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -707,8 +762,9 @@ def write_threads_db_row(
     title: str,
     preview: str,
     first_user_message: str,
+    db_name: str = "state_5.sqlite",
 ) -> None:
-    db_path = home / "state_5.sqlite"
+    db_path = home / db_name
     con = sqlite3.connect(db_path)
     try:
         con.execute(
