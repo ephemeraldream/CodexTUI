@@ -628,6 +628,49 @@ class CliTests(unittest.TestCase):
         self.assertEqual([row["rollout_path"] for row in rows], [str(rollout)])
         self.assertEqual([row["id"] for row in rows], ["019f-test-db-id-shared-path"])
 
+    def test_view_resolves_rollout_session_id_after_sqlite_dedupe(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            rollout = write_cli_session(
+                home,
+                "019f-test-jsonl-id-alias",
+                cwd="/tmp/project",
+                user_message="View should find this shared rollout",
+            )
+            write_threads_db_row(
+                home,
+                session_id="019f-test-db-id-alias",
+                cwd="/tmp/project",
+                source="cli",
+                rollout_path=str(rollout),
+                title="Database row for shared rollout",
+                preview="",
+                first_user_message="Database row for shared rollout",
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "codex_tui",
+                    "view",
+                    "019f-test-jsonl-id-alias",
+                    "--no-pager",
+                    "--no-color",
+                ],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("View should find this shared rollout", result.stdout)
+
     def test_list_uses_session_files_when_stale_sqlite_rows_are_filtered_out(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)

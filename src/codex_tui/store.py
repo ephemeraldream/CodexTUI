@@ -198,10 +198,15 @@ class CodexStore:
         path = Path(str(selector)).expanduser()
         if path.exists():
             return thread_from_path(path)
-        exact = [thread for thread in threads if thread.id == selector]
+        selectable_threads = [(thread, thread_selector_ids(thread)) for thread in threads]
+        exact = [thread for thread, ids in selectable_threads if selector in ids]
         if exact:
             return exact[0]
-        prefix = [thread for thread in threads if thread.id.startswith(str(selector))]
+        prefix = [
+            thread
+            for thread, ids in selectable_threads
+            if any(thread_id.startswith(str(selector)) for thread_id in ids)
+        ]
         if len(prefix) == 1:
             return prefix[0]
         query = str(selector).casefold()
@@ -589,6 +594,20 @@ def merge_thread_lists(primary: list[ThreadRow], fallback: list[ThreadRow]) -> l
 
 def thread_key_values(thread: ThreadRow) -> set[str]:
     return state_thread_key_values(thread.id, thread.rollout_path)
+
+
+def thread_selector_ids(thread: ThreadRow) -> set[str]:
+    ids = {thread.id} if thread.id else set()
+    if not thread.rollout_path:
+        return ids
+    rollout_path = Path(thread.rollout_path)
+    meta_id = read_session_meta(rollout_path).get("id", "")
+    if meta_id:
+        ids.add(meta_id)
+    path_id = id_from_path(rollout_path)
+    if path_id:
+        ids.add(path_id)
+    return ids
 
 
 def state_thread_key_values(thread_id: str, rollout_path: str) -> set[str]:

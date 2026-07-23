@@ -127,6 +127,64 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(thread.id, "019f-test-project")
         self.assertEqual(thread.first_user_message, "Project older session")
 
+    def test_resolve_thread_accepts_rollout_session_id_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            rollout = write_session(
+                home,
+                "sessions",
+                "019f-test-jsonl-alias",
+                cwd="/tmp/project",
+                source="cli",
+                user_message="Shared rollout alias",
+            )
+            db_path = home / "state_5.sqlite"
+            con = sqlite3.connect(db_path)
+            try:
+                con.execute(
+                    """
+                    CREATE TABLE threads (
+                        id TEXT,
+                        title TEXT,
+                        cwd TEXT,
+                        source TEXT,
+                        archived INTEGER,
+                        rollout_path TEXT,
+                        created_at_ms INTEGER,
+                        updated_at_ms INTEGER,
+                        recency_at_ms INTEGER,
+                        preview TEXT,
+                        first_user_message TEXT
+                    )
+                    """
+                )
+                con.execute(
+                    """
+                    INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "019f-test-db-alias",
+                        "Database id for shared rollout",
+                        "/tmp/project",
+                        "cli",
+                        0,
+                        str(rollout),
+                        1783677600000,
+                        1783677605000,
+                        1783677605000,
+                        "",
+                        "Database id for shared rollout",
+                    ),
+                )
+                con.commit()
+            finally:
+                con.close()
+
+            thread = CodexStore(home).resolve_thread("019f-test-jsonl-alias")
+
+        self.assertEqual(thread.id, "019f-test-db-alias")
+        self.assertEqual(thread.rollout_path, str(rollout))
+
     def test_cwd_filter_uses_path_boundaries_for_path_filters(self) -> None:
         self.assertTrue(cwd_matches_filter("/tmp/project/src", "/tmp/project"))
         self.assertFalse(cwd_matches_filter("/tmp/project2", "/tmp/project"))
