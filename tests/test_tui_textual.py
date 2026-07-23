@@ -773,6 +773,34 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_finish_new_stream_switches_to_mode_that_shows_created_run(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                existing = thread_with_messages(root, "019f-existing-dialog", "cli", ["Question"], ["Answer"])
+                created = thread_with_messages(root, "019f-created-run", "exec", ["Return JSON status"], ["{}"])
+                threads = [existing]
+                app = tui_textual.CodexTextualApp(lambda: list(threads))
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.press("n")
+                    await pilot.pause()
+                    app.thread_ids_before_new_stream = {existing.id}
+                    app.update_session_info_from_stream_record({"type": "thread.started", "thread_id": created.id})
+                    threads.insert(0, created)
+
+                    app.finish_new_stream(0)
+                    await pilot.pause()
+
+                    self.assertEqual(app.history_mode, "runs")
+                    self.assertEqual(app.current_thread.id, created.id)
+                    self.assertEqual(app.entries[0].thread.id, created.id)
+                    rendered_lines = "\n".join(block.text for block in app.transcript_blocks)
+                    self.assertIn("{}", rendered_lines)
+                    self.assertNotIn("Answer", rendered_lines)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_submit_uses_pending_clipboard_image_paths(self) -> None:
         async def run_case() -> None:
             with tempfile.TemporaryDirectory() as temp_dir:

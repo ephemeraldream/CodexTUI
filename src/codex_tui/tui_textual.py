@@ -598,6 +598,26 @@ def next_nonempty_history_mode(
     return "", 0
 
 
+def history_mode_containing_thread(
+    threads: Iterable[ThreadRow],
+    thread_id: str,
+    *,
+    current_mode: str,
+    query: str = "",
+) -> str:
+    if not thread_id:
+        return current_mode
+    thread_list = list(threads)
+    mode_order = [current_mode, *(mode for mode in HISTORY_MODES if mode != current_mode)]
+    for mode in mode_order:
+        if mode not in HISTORY_MODES:
+            continue
+        entries = build_history_entries(thread_list, mode=mode, query=query)
+        if any(any(thread.id == thread_id for thread in entry.threads) for entry in entries):
+            return mode
+    return current_mode
+
+
 def history_mode_entry_label(mode: str, count: int) -> str:
     if mode == "runs":
         return "run group" if count == 1 else "run groups"
@@ -1242,6 +1262,12 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.load_threads()
             refreshed = self.created_thread_after_new_stream()
             if refreshed is not None:
+                self.history_mode = history_mode_containing_thread(
+                    self.threads,
+                    refreshed.id,
+                    current_mode=self.history_mode,
+                    query=self.query,
+                )
                 self.current_thread = refreshed
                 self.render_conversation(refreshed)
             self.refresh_history()
