@@ -396,6 +396,30 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_refresh_does_not_restore_selection_filtered_out_by_pending_search(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                first = thread_with_messages(root, "019f-first-refresh", "cli", ["First question"], ["First answer"])
+                second = thread_with_messages(root, "019f-second-refresh", "cli", ["Second question"], ["Second answer"])
+                app = tui_textual.CodexTextualApp(lambda: [first, second])
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.pause()
+                    self.assertEqual(app.current_thread.id, "019f-first-refresh")
+
+                    app.query = "Second"
+                    app.action_refresh()
+                    await pilot.pause()
+
+                    rendered_blocks = "\n".join(block.text for block in app.transcript_blocks)
+                    self.assertEqual([entry.thread.id for entry in app.entries], ["019f-second-refresh"])
+                    self.assertEqual(app.current_thread.id, "019f-second-refresh")
+                    self.assertIn("Second answer", rendered_blocks)
+                    self.assertNotIn("First answer", rendered_blocks)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_stale_history_highlight_after_shutdown_is_ignored(self) -> None:
         class FakeListView:
             id = "thread-list"

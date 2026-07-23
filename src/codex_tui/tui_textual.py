@@ -726,10 +726,10 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.load_threads()
             self.refresh_history()
             if selected_id:
-                thread = next((thread for thread in self.threads if thread.id == selected_id), None)
-                if thread:
-                    self.current_thread = thread
-                    self.render_conversation(thread)
+                entry = next((entry for entry in self.entries if entry.thread.id == selected_id), None)
+                if entry:
+                    self.current_thread = entry.thread
+                    self.render_conversation(entry.thread)
 
         def action_toggle_history_pane(self) -> None:
             self.set_history_pane_visible(not self.history_visible)
