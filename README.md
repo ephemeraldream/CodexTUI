@@ -192,6 +192,7 @@ ctui
 
 The TUI opens in conversation mode.
 The left pane shows real dialogs first, so repeated autonomous `exec` runs do not dominate the default view.
+If there are no dialogs but Codex exec runs exist, the TUI opens runs mode instead.
 Press `g` to cycle conversations, grouped runs, and all local history.
 Press `Enter` on a row to render the full chat transcript in the right pane.
 The transcript receives focus after opening, so keyboard scrolling works immediately.

@@ -220,6 +220,7 @@ class TextualTuiModelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             run = thread_with_messages(Path(temp_dir), "019f-run-only", "exec", ["Run task"], ["{}"])
 
+            startup_mode = tui_textual.startup_history_mode([run])
             alternate_mode, alternate_count = tui_textual.next_nonempty_history_mode(
                 [run],
                 current_mode="conversations",
@@ -231,6 +232,7 @@ class TextualTuiModelTests(unittest.TestCase):
                 alternate_count=alternate_count,
             )
 
+        self.assertEqual(startup_mode, "runs")
         self.assertEqual((alternate_mode, alternate_count), ("runs", 1))
         self.assertIn("Press g to view 1 run group.", text)
 
@@ -255,7 +257,7 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
-    def test_empty_conversation_mode_guides_to_runs_mode(self) -> None:
+    def test_run_only_startup_opens_runs_mode(self) -> None:
         async def run_case() -> None:
             with tempfile.TemporaryDirectory() as temp_dir:
                 run = thread_with_messages(Path(temp_dir), "019f-run-guide", "exec", ["Run task"], ["{}"])
@@ -267,17 +269,12 @@ class TextualTuiModelTests(unittest.TestCase):
                     status = str(app.query_one("#status-line", tui_textual.Static).render())
                     rendered_blocks = "\n".join(block.text for block in app.transcript_blocks)
 
-                    self.assertEqual(app.entries, [])
-                    self.assertIn("No Codex dialogs", title)
-                    self.assertIn("Press g to view 1 run group.", rendered_blocks)
-                    self.assertIn("Press g for 1", status)
-
-                    await pilot.press("g")
-                    await pilot.pause()
-
                     self.assertEqual(app.history_mode, "runs")
                     self.assertEqual(len(app.entries), 1)
                     self.assertEqual(app.entries[0].thread.id, run.id)
+                    self.assertIn("Run task", title)
+                    self.assertIn("Run task", rendered_blocks)
+                    self.assertIn("1 run group loaded.", status)
 
         asyncio.run(run_case())
 
@@ -292,6 +289,13 @@ class TextualTuiModelTests(unittest.TestCase):
 
                     self.assertFalse(app.history_visible)
                     self.assertEqual(getattr(app.focused, "id", ""), "transcript")
+                    self.assertEqual(app.history_mode, "runs")
+                    self.assertEqual(len(app.entries), 1)
+
+                    app.history_mode = "conversations"
+                    app.refresh_history()
+                    await pilot.pause()
+
                     self.assertEqual(app.entries, [])
                     self.assertEqual(app.history_mode, "conversations")
 

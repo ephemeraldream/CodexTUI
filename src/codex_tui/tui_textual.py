@@ -671,6 +671,23 @@ def next_nonempty_history_mode(
     return "", 0
 
 
+def startup_history_mode(
+    threads: Iterable[ThreadRow],
+    *,
+    preferred_mode: str = "conversations",
+    query: str = "",
+) -> str:
+    thread_list = list(threads)
+    if build_history_entries(thread_list, mode=preferred_mode, query=query):
+        return preferred_mode
+    alternate_mode, _ = next_nonempty_history_mode(
+        thread_list,
+        current_mode=preferred_mode,
+        query=query,
+    )
+    return alternate_mode or preferred_mode
+
+
 def history_mode_containing_thread(
     threads: Iterable[ThreadRow],
     thread_id: str,
@@ -907,6 +924,11 @@ if TEXTUAL_IMPORT_ERROR is None:
 
         def on_mount(self) -> None:
             self.load_threads()
+            self.history_mode = startup_history_mode(
+                self.threads,
+                preferred_mode=self.history_mode,
+                query=self.query,
+            )
             self.refresh_history()
             self.sync_footer_visibility()
             if self.size.width <= COMPACT_LAYOUT_MAX_WIDTH:
