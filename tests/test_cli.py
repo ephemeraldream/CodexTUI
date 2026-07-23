@@ -1001,6 +1001,46 @@ class CliTests(unittest.TestCase):
         self.assertEqual(rows[0]["source"], "cli")
         self.assertEqual(rows[0]["cwd"], "/tmp/project")
 
+    def test_list_recovers_blank_sqlite_id_from_rollout_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            rollout = home / "legacy-rollouts" / "blank-id-state.jsonl"
+            write_session_file(
+                rollout,
+                "019f-test-blank-id-state",
+                cwd="/tmp/project",
+                user_message="Readable blank id state session",
+            )
+            write_threads_db_row(
+                home,
+                session_id="",
+                cwd="",
+                source="",
+                rollout_path=str(rollout),
+                title="",
+                preview="",
+                first_user_message="",
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-blank-id-state"])
+        self.assertEqual(rows[0]["title"], "Readable blank id state session")
+        self.assertEqual(rows[0]["source"], "cli")
+        self.assertEqual(rows[0]["cwd"], "/tmp/project")
+
     def test_list_resolves_relative_sqlite_rollout_paths_from_codex_home(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)

@@ -501,13 +501,15 @@ def state_db_archived_bool(value: object) -> bool:
 
 def thread_from_state_row(row: sqlite3.Row, *, base_dir: Path | None = None) -> ThreadRow:
     rollout_path = state_row_rollout_path(row["rollout_path"], base_dir=base_dir)
+    session_id = str(row["id"] or "")
     title = clean_metadata_text(str(row["title"] or ""))
     cwd = str(row["cwd"] or "")
     source = str(row["source"] or "")
     preview = clean_metadata_text(str(row["preview"] or ""))
     first = clean_metadata_text(str(row["first_user_message"] or ""))
-    if rollout_path and (not cwd or not source):
+    if rollout_path and (not session_id or not cwd or not source):
         rollout_meta = read_session_meta(Path(rollout_path))
+        session_id = session_id or rollout_meta.get("id", "") or id_from_path(Path(rollout_path))
         cwd = cwd or rollout_meta.get("cwd", "")
         source = source or rollout_meta.get("source", "")
     if rollout_path and (not title or not first):
@@ -518,7 +520,7 @@ def thread_from_state_row(row: sqlite3.Row, *, base_dir: Path | None = None) -> 
     if not title:
         title = preview or (Path(rollout_path).name if rollout_path else "")
     return ThreadRow(
-        id=str(row["id"] or ""),
+        id=session_id,
         title=title,
         cwd=cwd,
         source=source,
