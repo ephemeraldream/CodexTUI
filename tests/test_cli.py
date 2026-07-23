@@ -387,6 +387,53 @@ class CliTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], ["019f-test-empty-db"])
         self.assertEqual(rows[0]["title"], "Session hidden by empty db")
 
+    def test_list_merges_newer_unindexed_session_file_with_readable_sqlite_history(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            older_rollout = write_cli_session(
+                home,
+                "019f-test-indexed-old",
+                cwd="/tmp/project",
+                user_message="Indexed old session",
+            )
+            newer_rollout = write_cli_session(
+                home,
+                "019f-test-unindexed-new",
+                cwd="/tmp/project",
+                user_message="Unindexed new session",
+            )
+            os.utime(newer_rollout, (1783677607, 1783677607))
+            write_threads_db_row(
+                home,
+                session_id="019f-test-indexed-old",
+                cwd="/tmp/project",
+                source="cli",
+                rollout_path=str(older_rollout),
+                title="Indexed old session",
+                preview="",
+                first_user_message="Indexed old session",
+                recency_at_ms=1783677605000,
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json", "--limit", "2"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(
+            [row["id"] for row in rows],
+            ["019f-test-unindexed-new", "019f-test-indexed-old"],
+        )
+
     def test_list_uses_session_files_when_sqlite_rows_reference_missing_rollouts(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)

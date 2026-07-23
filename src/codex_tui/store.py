@@ -147,6 +147,26 @@ class CodexStore:
                 merged_with_fallback = True
             elif db_filtered_empty:
                 return None
+        elif readable_threads:
+            newest_state_recency_ms = max(thread.recency_at_ms for thread in readable_threads)
+            newer_file_threads = self.scan_threads_from_files(
+                include_archived=include_archived,
+                limit=None,
+                query=query,
+                source=source,
+                cwd=cwd,
+                newer_than_ms=newest_state_recency_ms,
+            )
+            if newer_file_threads:
+                indexed_keys = self.indexed_state_thread_keys()
+                newer_file_threads = [
+                    thread
+                    for thread in newer_file_threads
+                    if thread_key_values(thread).isdisjoint(indexed_keys)
+                ]
+            if newer_file_threads:
+                threads = merge_thread_lists(threads, newer_file_threads)
+                merged_with_fallback = True
         if limit is not None and limit >= 0 and (
             needs_python_filter or merged_with_fallback or reloaded_without_sql_limit
         ):
@@ -208,6 +228,28 @@ class CodexStore:
         con.row_factory = sqlite3.Row
         return con
 
+    def indexed_state_thread_keys(self) -> set[str]:
+        keys: set[str] = set()
+        for db_path in self.state_db_paths():
+            con = self.open_state_db(db_path)
+            if con is None:
+                continue
+            try:
+                columns = state_db_thread_columns(con)
+                if "id" not in columns:
+                    continue
+                rollout_column = "rollout_path" if "rollout_path" in columns else "'' AS rollout_path"
+                rows = con.execute(f"SELECT id, {rollout_column} FROM threads").fetchall()
+            except sqlite3.Error:
+                continue
+            finally:
+                con.close()
+            for row in rows:
+                thread_id = str(row["id"] or "")
+                rollout_path = state_row_rollout_path(row["rollout_path"], base_dir=db_path.parent)
+                keys.update(state_thread_key_values(thread_id, rollout_path))
+        return keys
+
     def scan_threads_from_files(
         self,
         *,
@@ -216,24 +258,31 @@ class CodexStore:
         query: str | None = None,
         source: str | None = None,
         cwd: str | None = None,
+        newer_than_ms: int | None = None,
     ) -> list[ThreadRow]:
         if limit == 0:
             return []
         roots = [self.home / "sessions"]
         if include_archived:
             roots.append(self.home / "archived_sessions")
-        files: list[Path] = []
+        files: list[tuple[int, Path]] = []
         for root in roots:
             if root.exists():
-                files.extend(root.rglob("*.jsonl"))
-        files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+                for path in root.rglob("*.jsonl"):
+                    try:
+                        mtime_ms = int(path.stat().st_mtime * 1000)
+                    except OSError:
+                        continue
+                    if newer_than_ms is not None and mtime_ms <= newer_than_ms:
+                        continue
+                    files.append((mtime_ms, path))
+        files.sort(key=lambda item: item[0], reverse=True)
         threads: list[ThreadRow] = []
-        for path in files:
+        for mtime_ms, path in files:
             meta = read_session_meta(path)
             session_id = meta.get("id") or id_from_path(path)
             first = first_user_message(path)
             title = clean_metadata_text(meta.get("thread_name") or first or path.name)
-            mtime_ms = int(path.stat().st_mtime * 1000)
             threads.append(
                 ThreadRow(
                     id=session_id,
@@ -499,6 +548,19 @@ def merge_thread_lists(primary: list[ThreadRow], fallback: list[ThreadRow]) -> l
         if key and key not in by_key:
             by_key[key] = thread
     return sorted(by_key.values(), key=lambda thread: (thread.recency_at_ms, thread.id), reverse=True)
+
+
+def thread_key_values(thread: ThreadRow) -> set[str]:
+    return state_thread_key_values(thread.id, thread.rollout_path)
+
+
+def state_thread_key_values(thread_id: str, rollout_path: str) -> set[str]:
+    keys: set[str] = set()
+    if thread_id:
+        keys.add(f"id:{thread_id}")
+    if rollout_path:
+        keys.add(f"path:{rollout_path}")
+    return keys
 
 
 def read_session_meta(path: Path) -> dict[str, str]:
