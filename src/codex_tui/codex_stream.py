@@ -429,9 +429,33 @@ def render_completed_item(payload: dict[str, object]) -> str:
     text = str(item.get("text") or "").strip()
     if text:
         return f"{prefix} completed\n{text}"
-    detail = compact_value(item)
+    detail = completed_item_detail(item)
     suffix = f": {detail}" if detail else ""
     return f"{prefix} completed{suffix}"
+
+
+def completed_item_detail(item: dict[str, object]) -> str:
+    parts: list[str] = []
+    name = compact_scalar(item.get("name"))
+    if name:
+        parts.append(name)
+    status = compact_scalar(item.get("status"))
+    if status and status != "completed":
+        parts.append(f"status {status}")
+    reason = compact_scalar(item.get("reason"))
+    if reason:
+        parts.append(reason)
+    return ", ".join(parts)
+
+
+def compact_scalar(value: object, *, limit: int = 120) -> str:
+    if isinstance(value, str):
+        return compact_value(value, limit=limit)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int | float):
+        return format_number(float(value))
+    return ""
 
 
 def render_thread_rollback(payload: dict[str, object]) -> str:

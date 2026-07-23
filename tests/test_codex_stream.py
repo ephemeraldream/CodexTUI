@@ -300,6 +300,27 @@ class CodexStreamTests(unittest.TestCase):
             renderer.render_line(rollback_line), "[thread] rolled back 1 turn."
         )
 
+    def test_renderer_summarizes_unknown_completed_item_without_raw_json(self) -> None:
+        line = json_line(
+            "event_msg",
+            {
+                "type": "item_completed",
+                "item": {
+                    "id": "item_opaque",
+                    "type": "browser_action",
+                    "name": "open_page",
+                    "status": "completed",
+                    "arguments": {"url": "https://example.com"},
+                },
+            },
+        )
+
+        rendered = text_from_json_line(line)
+
+        self.assertEqual(rendered, "[item] browser_action completed: open_page")
+        self.assertNotIn("{", rendered or "")
+        self.assertNotIn("arguments", rendered or "")
+
     def test_renderer_streams_top_level_compaction_once(self) -> None:
         compacted_line = json.dumps(
             {
