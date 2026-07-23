@@ -72,7 +72,21 @@ class CodexStore:
                 for thread in threads
                 if thread_matches_filters(thread, query=query, source=None, cwd=cwd)
             ]
-        if limit is not None and needs_python_filter:
+        merged_with_fallback = False
+        unreadable_rollout = any(not thread_rollout_readable(thread) for thread in threads)
+        if unreadable_rollout:
+            fallback_threads = self.scan_threads_from_files(
+                include_archived=include_archived,
+                limit=None,
+                query=query,
+                source=source,
+                cwd=cwd,
+            )
+            if fallback_threads:
+                readable_threads = [thread for thread in threads if thread_rollout_readable(thread)]
+                threads = merge_thread_lists(readable_threads, fallback_threads)
+                merged_with_fallback = True
+        if limit is not None and (needs_python_filter or merged_with_fallback):
             threads = threads[:limit]
         return threads
 
@@ -213,6 +227,24 @@ def thread_from_state_row(row: sqlite3.Row) -> ThreadRow:
         preview=preview,
         first_user_message=first,
     )
+
+
+def thread_rollout_readable(thread: ThreadRow) -> bool:
+    if not thread.rollout_path:
+        return False
+    try:
+        return Path(thread.rollout_path).is_file()
+    except OSError:
+        return False
+
+
+def merge_thread_lists(primary: list[ThreadRow], fallback: list[ThreadRow]) -> list[ThreadRow]:
+    by_key: dict[str, ThreadRow] = {}
+    for thread in [*primary, *fallback]:
+        key = thread.id or thread.rollout_path
+        if key and key not in by_key:
+            by_key[key] = thread
+    return sorted(by_key.values(), key=lambda thread: (thread.recency_at_ms, thread.id), reverse=True)
 
 
 def read_session_meta(path: Path) -> dict[str, str]:

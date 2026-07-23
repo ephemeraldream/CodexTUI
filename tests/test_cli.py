@@ -386,6 +386,43 @@ class CliTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], ["019f-test-empty-db"])
         self.assertEqual(rows[0]["title"], "Session hidden by empty db")
 
+    def test_list_uses_session_files_when_sqlite_rows_reference_missing_rollouts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            write_cli_session(
+                home,
+                "019f-test-readable-file",
+                cwd="/tmp/project",
+                user_message="Readable session file",
+            )
+            write_threads_db_row(
+                home,
+                session_id="019f-test-stale-row",
+                cwd="/tmp/project",
+                source="cli",
+                rollout_path=str(home / "missing-rollout.jsonl"),
+                title="Stale SQLite row",
+                preview="",
+                first_user_message="Stale SQLite row",
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-readable-file"])
+        self.assertEqual(rows[0]["title"], "Readable session file")
+
     def test_single_session_commands_here_resolve_last_in_current_git_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
