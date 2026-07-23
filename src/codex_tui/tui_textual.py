@@ -1347,10 +1347,14 @@ if TEXTUAL_IMPORT_ERROR is None:
             self.streaming = False
             self.load_threads()
             refreshed = next((thread for thread in self.threads if thread.id == thread_id), self.current_thread)
-            if refreshed is not None:
+            if code == 0 and refreshed is not None:
                 self.current_thread = refreshed
                 self.render_conversation(refreshed)
-            self.refresh_history()
+                self.refresh_history()
+            else:
+                if refreshed is not None:
+                    self.current_thread = refreshed
+                self.refresh_history(open_visible_selection=False, update_status=False)
             status = "Codex finished." if code == 0 else f"Codex exited with status {code}."
             self.set_status(status)
 

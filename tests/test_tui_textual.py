@@ -994,6 +994,36 @@ class TextualTuiModelTests(unittest.TestCase):
         asyncio.run(run_case())
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_failed_resume_stream_keeps_live_transcript(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                thread = thread_with_messages(root, "019f-resume-fails", "cli", ["Question"], ["Original answer"])
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.press("enter")
+                    await pilot.pause()
+                    app.run_worker = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+                    submitted = app.submit_composer("follow up that fails")
+                    app.append_stream_block("[task] Codex turn failed: unable to resume")
+                    app.finish_stream(thread.id, 2)
+                    await pilot.pause()
+
+                    self.assertTrue(submitted)
+                    self.assertEqual(app.current_thread.id, thread.id)
+                    self.assertEqual(app.entries[0].thread.id, thread.id)
+                    rendered_lines = "\n".join(block.text for block in app.transcript_blocks)
+                    self.assertIn("Original answer", rendered_lines)
+                    self.assertIn("follow up that fails", rendered_lines)
+                    self.assertIn("[task] Codex turn starting...", rendered_lines)
+                    self.assertIn("unable to resume", rendered_lines)
+                    status = str(app.query_one("#status-line", tui_textual.Static).render())
+                    self.assertIn("Codex exited with status 2.", status)
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_submit_uses_pending_clipboard_image_paths(self) -> None:
         async def run_case() -> None:
             with tempfile.TemporaryDirectory() as temp_dir:
