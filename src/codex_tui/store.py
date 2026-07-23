@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import math
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -268,6 +269,13 @@ def safe_ms(value: object) -> int:
         except ValueError:
             pass
         try:
+            parsed_float = float(clean)
+        except ValueError:
+            pass
+        else:
+            if math.isfinite(parsed_float):
+                return int(parsed_float)
+        try:
             parsed = dt.datetime.fromisoformat(clean.replace("Z", "+00:00"))
         except ValueError:
             return 0
@@ -360,17 +368,23 @@ def select_recency_at_ms_column(columns: set[str]) -> str:
 
 
 def normalize_state_timestamp_sql(column: str, alias: str, numeric_unit: str) -> str:
-    numeric_expr = f"CAST({column} AS INTEGER)"
+    numeric_expr = f"CAST(CAST({column} AS REAL) AS INTEGER)"
     if numeric_unit == "seconds":
-        numeric_expr = f"({numeric_expr} * 1000)"
+        numeric_expr = f"CAST(CAST({column} AS REAL) * 1000 AS INTEGER)"
     text_value = f"trim(CAST({column} AS TEXT))"
     digits = f"({text_value} GLOB '[0-9]*' AND {text_value} NOT GLOB '*[^0-9]*')"
+    decimal = (
+        f"({text_value} GLOB '[0-9]*.[0-9]*' "
+        f"AND {text_value} NOT GLOB '*[^0-9.]*' "
+        f"AND length({text_value}) - length(replace({text_value}, '.', '')) = 1)"
+    )
+    numeric_text = f"(({digits}) OR ({decimal}))"
     parsed_iso = f"CAST(strftime('%s', {column}) AS INTEGER) * 1000"
     return f"""
         CASE
             WHEN {column} IS NULL THEN 0
             WHEN typeof({column}) IN ('integer', 'real') THEN {numeric_expr}
-            WHEN {digits} THEN {numeric_expr}
+            WHEN {numeric_text} THEN {numeric_expr}
             WHEN strftime('%s', {column}) IS NOT NULL THEN {parsed_iso}
             ELSE 0
         END AS {alias}

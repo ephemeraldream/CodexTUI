@@ -811,6 +811,55 @@ class CliTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], ["019f-test-aaa-iso-newer"])
         self.assertEqual(rows[0]["updated_at"], format_ms(1783677605000))
 
+    def test_list_reads_legacy_state_database_with_decimal_text_timestamps(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            newer_rollout = home / "legacy-rollouts" / "decimal-newer.jsonl"
+            older_rollout = home / "legacy-rollouts" / "decimal-older.jsonl"
+            write_session_file(
+                newer_rollout,
+                "019f-test-aaa-decimal-newer",
+                cwd="/tmp/project",
+                user_message="Readable decimal newer state session",
+            )
+            write_session_file(
+                older_rollout,
+                "019f-test-zzz-decimal-older",
+                cwd="/tmp/project",
+                user_message="Readable decimal older state session",
+            )
+            write_text_timestamp_threads_db_row(
+                home,
+                session_id="019f-test-aaa-decimal-newer",
+                rollout_path=str(newer_rollout),
+                title="Readable decimal newer state session",
+                recency_at_ms="1783677605000.0",
+            )
+            write_text_timestamp_threads_db_row(
+                home,
+                session_id="019f-test-zzz-decimal-older",
+                rollout_path=str(older_rollout),
+                title="Readable decimal older state session",
+                recency_at_ms="1783677603000.0",
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "list", "--json", "--limit", "1"],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-aaa-decimal-newer"])
+        self.assertEqual(rows[0]["updated_at"], format_ms(1783677605000))
+
     def test_list_recovers_source_and_cwd_when_legacy_state_lacks_columns(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
@@ -1550,6 +1599,57 @@ def write_iso_timestamp_threads_db_row(
                 rollout_path,
                 "2026-07-10T10:00:00Z",
                 updated_at,
+            ),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def write_text_timestamp_threads_db_row(
+    home: Path,
+    *,
+    session_id: str,
+    rollout_path: str,
+    title: str,
+    recency_at_ms: str,
+) -> None:
+    db_path = home / "state_5.sqlite"
+    con = sqlite3.connect(db_path)
+    try:
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS threads (
+                id TEXT,
+                title TEXT,
+                cwd TEXT,
+                source TEXT,
+                archived INTEGER,
+                rollout_path TEXT,
+                created_at_ms TEXT,
+                updated_at_ms TEXT,
+                recency_at_ms TEXT,
+                preview TEXT,
+                first_user_message TEXT
+            )
+            """
+        )
+        con.execute(
+            """
+            INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                title,
+                "/tmp/project",
+                "cli",
+                0,
+                rollout_path,
+                "1783677600000.0",
+                recency_at_ms,
+                recency_at_ms,
+                "",
+                title,
             ),
         )
         con.commit()
