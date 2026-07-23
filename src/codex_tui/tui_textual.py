@@ -309,8 +309,12 @@ def parse_composer_payload(value: str, *, cwd: Path | None = None) -> ComposerPa
     while index < len(tokens):
         token = tokens[index]
         if token.value in IMAGE_ATTACHMENT_PREFIXES and index + 1 < len(tokens):
-            image_paths.append(normalized_attachment_path(tokens[index + 1].value, root))
-            attachment_ranges.append((token.start, tokens[index + 1].end))
+            next_token = tokens[index + 1]
+            if not looks_like_image_path(path_from_pasted_value(next_token.value)):
+                index += 1
+                continue
+            image_paths.append(normalized_attachment_path(next_token.value, root))
+            attachment_ranges.append((token.start, next_token.end))
             index += 2
             continue
         if token.value.startswith("@") and looks_like_image_path(token.value[1:]):
@@ -381,7 +385,7 @@ def looks_like_image_path(value: str) -> bool:
 
 
 def normalized_attachment_path(value: str, cwd: Path) -> str:
-    path = Path(value).expanduser()
+    path = Path(path_from_pasted_value(value)).expanduser()
     if not path.is_absolute():
         path = cwd / path
     return str(path.resolve(strict=False))

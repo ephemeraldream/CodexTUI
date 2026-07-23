@@ -125,6 +125,12 @@ class TextualTuiModelTests(unittest.TestCase):
             (str((root / "screen shot.png").resolve(strict=False)),),
         )
 
+    def test_parse_composer_payload_keeps_non_image_image_prefix_as_prompt_text(self) -> None:
+        payload = parse_composer_payload("/image generate a logo")
+
+        self.assertEqual(payload.prompt, "/image generate a logo")
+        self.assertEqual(payload.image_paths, ())
+
     def test_image_paths_from_paste_text_accepts_existing_image_paths(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -898,6 +904,29 @@ class TextualTuiModelTests(unittest.TestCase):
 
                     self.assertTrue(submitted)
                     self.assertEqual(calls, ['preserve "quoted words" and {"json": true}'])
+
+        asyncio.run(run_case())
+
+    @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
+    def test_submit_keeps_non_image_image_prefix_as_prompt_text(self) -> None:
+        async def run_case() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                thread = thread_with_messages(root, "019f-image-word-prompt", "cli", ["Question"], ["Answer"])
+                app = tui_textual.CodexTextualApp(lambda: [thread])
+                calls: list[tuple[str, tuple[str, ...]]] = []
+
+                async with app.run_test(size=(110, 24)) as pilot:
+                    await pilot.press("enter")
+                    await pilot.pause()
+                    app.resume_worker = lambda _thread, prompt, image_paths=(): calls.append((prompt, image_paths))  # type: ignore[method-assign]
+                    app.run_worker = lambda worker, *_args, **_kwargs: worker()  # type: ignore[method-assign]
+
+                    submitted = app.submit_composer("/image generate a logo")
+                    await pilot.pause()
+
+                    self.assertTrue(submitted)
+                    self.assertEqual(calls, [("/image generate a logo", ())])
 
         asyncio.run(run_case())
 
