@@ -99,6 +99,71 @@ class DoctorTests(unittest.TestCase):
         self.assertEqual(history["status"], "warn")
         self.assertIn("no readable sessions", history["detail"])
 
+    def test_cli_doctor_warns_when_state_database_rows_reference_missing_rollouts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            home = root / "codex-home"
+            home.mkdir()
+            codex = write_fake_codex(root, login_status=0)
+            con = sqlite3.connect(home / "state_5.sqlite")
+            try:
+                con.execute(
+                    """
+                    CREATE TABLE threads (
+                        id TEXT,
+                        title TEXT,
+                        cwd TEXT,
+                        source TEXT,
+                        archived INTEGER,
+                        rollout_path TEXT,
+                        created_at_ms INTEGER,
+                        updated_at_ms INTEGER,
+                        recency_at_ms INTEGER,
+                        preview TEXT,
+                        first_user_message TEXT
+                    )
+                    """
+                )
+                con.execute(
+                    """
+                    INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "019f-test-stale",
+                        "Stale row",
+                        "/tmp/project",
+                        "cli",
+                        0,
+                        str(home / "missing-rollout.jsonl"),
+                        1783677600000,
+                        1783677605000,
+                        1783677605000,
+                        "",
+                        "Stale row",
+                    ),
+                )
+                con.commit()
+            finally:
+                con.close()
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [sys.executable, "-m", "codex_tui", "doctor", "--json", "--codex-bin", str(codex)],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = json.loads(result.stdout)
+        history = next(row for row in rows if row["name"] == "codex history")
+        self.assertEqual(history["status"], "warn")
+        self.assertIn("no readable sessions", history["detail"])
+
     def test_real_codex_bin_falls_back_to_path_when_standalone_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

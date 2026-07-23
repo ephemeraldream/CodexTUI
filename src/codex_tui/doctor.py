@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import __version__
 from .paths import codex_home, real_codex_bin
-from .store import CodexStore
+from .store import CodexStore, thread_rollout_readable
 
 
 @dataclass(frozen=True)
@@ -124,10 +124,16 @@ def check_codex_state() -> DiagnosticCheck:
     dbs = sorted(home.glob("state_*.sqlite"))
     sessions = home / "sessions"
     try:
-        thread_count = len(CodexStore(home).load_threads(limit=1))
+        threads = CodexStore(home).load_threads(limit=None if dbs else 1)
     except Exception as exc:  # pragma: no cover - defensive against third party state files
         return DiagnosticCheck("codex history", "warn", f"unable to scan local Codex history under {home}: {exc}")
-    if thread_count:
+    if dbs and threads and all(not thread_rollout_readable(thread) for thread in threads):
+        return DiagnosticCheck(
+            "codex history",
+            "warn",
+            f"found {len(dbs)} state database(s) in {home} but no readable sessions were found",
+        )
+    if threads:
         if dbs:
             return DiagnosticCheck(
                 "codex history",
