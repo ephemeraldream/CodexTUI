@@ -574,12 +574,17 @@ def thread_rollout_readable(thread: ThreadRow) -> bool:
 
 
 def merge_thread_lists(primary: list[ThreadRow], fallback: list[ThreadRow]) -> list[ThreadRow]:
-    by_key: dict[str, ThreadRow] = {}
+    merged: list[ThreadRow] = []
+    seen_keys: set[str] = set()
     for thread in [*primary, *fallback]:
-        key = thread.id or thread.rollout_path
-        if key and key not in by_key:
-            by_key[key] = thread
-    return sorted(by_key.values(), key=lambda thread: (thread.recency_at_ms, thread.id), reverse=True)
+        keys = thread_key_values(thread)
+        if not keys:
+            continue
+        if not keys.isdisjoint(seen_keys):
+            continue
+        seen_keys.update(keys)
+        merged.append(thread)
+    return sorted(merged, key=lambda thread: (thread.recency_at_ms, thread.id), reverse=True)
 
 
 def thread_key_values(thread: ThreadRow) -> set[str]:
