@@ -762,6 +762,53 @@ class CliTests(unittest.TestCase):
         self.assertEqual(rows[0]["title"], "Readable legacy state session")
         self.assertEqual(rows[0]["updated_at"], format_ms(legacy_updated_at * 1000))
 
+    def test_list_recovers_source_and_cwd_when_legacy_state_lacks_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            legacy_rollout = home / "legacy-rollouts" / "minimal-state.jsonl"
+            write_session_file(
+                legacy_rollout,
+                "019f-test-minimal-state",
+                cwd="/tmp/project",
+                user_message="Readable minimal state session",
+            )
+            write_minimal_threads_db_row(
+                home,
+                session_id="019f-test-minimal-state",
+                rollout_path=str(legacy_rollout),
+                title="",
+                updated_at=1783677605,
+            )
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = "src"
+            env["CODEX_HOME"] = str(home)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "codex_tui",
+                    "list",
+                    "--json",
+                    "--source",
+                    "cli",
+                    "--cwd",
+                    "/tmp/project",
+                ],
+                cwd=os.getcwd(),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([row["id"] for row in rows], ["019f-test-minimal-state"])
+        self.assertEqual(rows[0]["title"], "Readable minimal state session")
+        self.assertEqual(rows[0]["source"], "cli")
+        self.assertEqual(rows[0]["cwd"], "/tmp/project")
+
     def test_single_session_commands_here_resolve_last_in_current_git_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1125,6 +1172,45 @@ def write_legacy_threads_db_row(
                 0,
                 rollout_path,
                 updated_at - 5,
+                updated_at,
+            ),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def write_minimal_threads_db_row(
+    home: Path,
+    *,
+    session_id: str,
+    rollout_path: str,
+    title: str,
+    updated_at: int,
+) -> None:
+    db_path = home / "state_5.sqlite"
+    con = sqlite3.connect(db_path)
+    try:
+        con.execute(
+            """
+            CREATE TABLE threads (
+                id TEXT,
+                title TEXT,
+                archived INTEGER,
+                rollout_path TEXT,
+                updated_at INTEGER
+            )
+            """
+        )
+        con.execute(
+            """
+            INSERT INTO threads VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                title,
+                0,
+                rollout_path,
                 updated_at,
             ),
         )

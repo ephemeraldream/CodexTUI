@@ -92,12 +92,6 @@ class CodexStore:
             params: list[object] = []
             if not include_archived and "archived" in columns:
                 clauses.append("archived = 0")
-            source_column = state_db_source_column(columns)
-            if source:
-                if source_column is None:
-                    return None
-                clauses.append(f"{source_column} = ?")
-                params.append(source)
             where = "WHERE " + " AND ".join(clauses) if clauses else ""
             base_sql = f"""
                 SELECT {", ".join(select_columns)}
@@ -105,7 +99,7 @@ class CodexStore:
                 {where}
                 ORDER BY recency_at_ms DESC, id DESC
             """
-            needs_python_filter = bool(query or cwd)
+            needs_python_filter = bool(query or source or cwd)
             use_sql_limit = limit is not None and limit >= 0 and not needs_python_filter
             sql = base_sql
             sql_params = list(params)
@@ -130,7 +124,7 @@ class CodexStore:
             threads = [
                 thread
                 for thread in threads
-                if thread_matches_filters(thread, query=query, source=None, cwd=cwd)
+                if thread_matches_filters(thread, query=query, source=source, cwd=cwd)
             ]
         db_filtered_empty = needs_python_filter and not threads
         readable_threads = [thread for thread in threads if thread_rollout_readable(thread)]
@@ -354,8 +348,14 @@ def select_recency_at_ms_column(columns: set[str]) -> str:
 def thread_from_state_row(row: sqlite3.Row) -> ThreadRow:
     rollout_path = str(row["rollout_path"] or "")
     title = clean_metadata_text(str(row["title"] or ""))
+    cwd = str(row["cwd"] or "")
+    source = str(row["source"] or "")
     preview = clean_metadata_text(str(row["preview"] or ""))
     first = clean_metadata_text(str(row["first_user_message"] or ""))
+    if rollout_path and (not cwd or not source):
+        rollout_meta = read_session_meta(Path(rollout_path))
+        cwd = cwd or rollout_meta.get("cwd", "")
+        source = source or rollout_meta.get("source", "")
     if rollout_path and (not title or not first):
         rollout_first = first_user_message(Path(rollout_path))
         if rollout_first:
@@ -366,8 +366,8 @@ def thread_from_state_row(row: sqlite3.Row) -> ThreadRow:
     return ThreadRow(
         id=str(row["id"] or ""),
         title=title,
-        cwd=str(row["cwd"] or ""),
-        source=str(row["source"] or ""),
+        cwd=cwd,
+        source=source,
         archived=bool(row["archived"]),
         rollout_path=rollout_path,
         created_at_ms=safe_ms(row["created_at_ms"]),
