@@ -19,6 +19,7 @@ from codex_tui.tui_textual import (
     build_history_entries,
     capture_clipboard_image,
     composer_display_text,
+    composer_help_text,
     entry_matches_query,
     image_paths_from_paste_text,
     is_conversation_thread,
@@ -162,6 +163,20 @@ class TextualTuiModelTests(unittest.TestCase):
 
         self.assertLessEqual(len(title), 32)
         self.assertIn("...", title)
+
+    def test_composer_help_text_compacts_to_available_width(self) -> None:
+        help_text = composer_help_text(history_visible=True, width=50)
+
+        self.assertLessEqual(len(help_text), 50)
+        self.assertIn("b hide", help_text)
+        self.assertIn("R resume", help_text)
+
+    def test_composer_help_text_preserves_pending_image_count_when_possible(self) -> None:
+        help_text = composer_help_text(history_visible=False, pending_image_count=3, width=64)
+
+        self.assertLessEqual(len(help_text), 64)
+        self.assertIn("3 images", help_text)
+        self.assertIn("b show list", help_text)
 
     @unittest.skipIf(TEXTUAL_IMPORT_ERROR is not None, "Textual is not installed")
     def test_enter_opens_conversation_and_focuses_scrollable_transcript(self) -> None:
@@ -359,6 +374,7 @@ class TextualTuiModelTests(unittest.TestCase):
                     self.assertEqual(str(pane.styles.width), "0")
                     self.assertGreaterEqual(conversation.region.width, 48)
                     self.assertEqual(getattr(app.focused, "id", ""), "transcript")
+                    self.assertLessEqual(len(help_text), app.conversation_content_width())
                     self.assertIn("b show list", help_text)
 
                     with patch.object(app, "exit") as exit_app:

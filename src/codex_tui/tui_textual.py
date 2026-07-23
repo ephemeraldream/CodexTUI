@@ -441,6 +441,78 @@ def compact_session_footer_text(info: SessionInfo) -> str:
     return f"{model} | {context}"
 
 
+def composer_help_text(
+    *,
+    history_visible: bool,
+    pending_image_count: int = 0,
+    width: int | None = None,
+) -> str:
+    history_hint = "b hide list" if history_visible else "b show list"
+    compact_history_hint = "b hide" if history_visible else "b show"
+    image_hint = image_attachment_help_text(pending_image_count)
+    variants = [
+        " | ".join(
+            [
+                "n new",
+                "j/k blocks",
+                "Enter/t expand",
+                "i/c chat",
+                image_hint,
+                history_hint,
+                "Ctrl+j/k scroll",
+                "gg/G",
+                "R resume",
+            ]
+        ),
+    ]
+    if pending_image_count:
+        if history_visible:
+            variants.extend(
+                [
+                    " | ".join(["n new", "j/k", "Enter/t", "i/c", image_hint, compact_history_hint, "R resume"]),
+                    " | ".join(["n", "Enter/t", image_hint, compact_history_hint, "R"]),
+                ]
+            )
+        else:
+            variants.extend(
+                [
+                    " | ".join(["n new", "j/k", "Enter/t", "i/c", image_hint, history_hint, "R resume"]),
+                    " | ".join(["n", "Enter/t", image_hint, history_hint, "R"]),
+                ]
+            )
+    else:
+        if history_visible:
+            variants.extend(
+                [
+                    " | ".join(["n new", "j/k", "Enter/t", "i/c chat", history_hint, "R resume"]),
+                    " | ".join(["n new", "j/k", "Enter/t", "i/c", compact_history_hint, "R resume"]),
+                    " | ".join(["n", "j/k", "Enter/t", "i/c", compact_history_hint, "R"]),
+                ]
+            )
+        else:
+            variants.extend(
+                [
+                    " | ".join(["n new", "j/k", "Enter/t", "i/c chat", history_hint, "R resume"]),
+                    " | ".join(["n new", "j/k", "Enter/t", "i/c", history_hint, "R"]),
+                    " | ".join(["n", "j/k", "Enter/t", "i/c", compact_history_hint, "R"]),
+                ]
+            )
+    if width is None:
+        return variants[0]
+    for variant in variants:
+        if len(variant) <= width:
+            return variant
+    return truncate(variants[-1], width)
+
+
+def image_attachment_help_text(count: int) -> str:
+    if count <= 0:
+        return "Cmd/Ctrl+V img"
+    if count == 1:
+        return "[Image 1]"
+    return f"{count} images"
+
+
 def selection_index_for_entry(entries: list[HistoryEntry], thread_id: str) -> int:
     if not entries:
         return 0
@@ -1112,10 +1184,13 @@ if TEXTUAL_IMPORT_ERROR is None:
                 self.focus_transcript()
 
         def update_composer_help(self) -> None:
-            history_hint = "b hide list" if self.history_visible else "b show list"
-            image_hint = f"{self.image_attachment_chips()} | " if self.pending_image_paths else "Cmd/Ctrl+V img | "
-            text = f"n new | j/k blocks | Enter/t expand | i/c chat | {image_hint}{history_hint} | Ctrl+j/k scroll | gg/G | R resume"
-            self.query_one("#composer-help", Static).update(text)
+            self.query_one("#composer-help", Static).update(
+                composer_help_text(
+                    history_visible=self.history_visible,
+                    pending_image_count=len(self.pending_image_paths),
+                    width=self.conversation_content_width(),
+                )
+            )
 
         def handle_composer_paste_text(self, text: str) -> bool:
             image_paths = image_paths_from_paste_text(text)
@@ -1133,9 +1208,6 @@ if TEXTUAL_IMPORT_ERROR is None:
                 return False
             self.add_pending_image_paths((image_path,), source="Clipboard")
             return True
-
-        def image_attachment_chips(self) -> str:
-            return " ".join(f"[Image {index}]" for index, _path in enumerate(self.pending_image_paths, start=1))
 
         def add_pending_image_paths(self, image_paths: Iterable[str], *, source: str) -> None:
             added = 0
